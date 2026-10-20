@@ -6,14 +6,26 @@ import express from 'express';
 import cors from 'cors';
 import { parseAndValidateEnv } from './env.js';
 import { attachSttWebSocketProxy } from './wsProxy.js';
+import {
+  DATA_DIR,
+  ensureDataDirectories,
+  readBenchmarksFromDisk,
+  saveBenchmarkToDisk,
+  deleteBenchmarkFromDisk,
+  clearAllBenchmarksFromDisk,
+  getAudioFilePath,
+} from './benchmarkStore.js';
+import type { BenchmarkTestResult } from '../shared/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export function createAppServer() {
+  ensureDataDirectories();
+
   const app = express();
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
 
   // Re-read env dynamically on health checks so editing .env works smoothly
   const getEnv = () => parseAndValidateEnv(process.env);
@@ -29,6 +41,7 @@ export function createAppServer() {
         maskedApiKey: env.maskedApiKey,
         upstreamEndpoint: env.elevenLabsWsUrl,
         warnings: env.validationWarnings,
+        dataDir: DATA_DIR,
         supportedFormats: [
           'pcm_8000',
           'pcm_16000',
@@ -43,6 +56,69 @@ export function createAppServer() {
       res.status(500).json({
         status: 'error',
         error: err instanceof Error ? err.message : 'Environment validation error',
+      });
+    }
+  });
+
+  // Persistent Benchmark Results API (stored in /data/benchmarks.json and /data/audio/*.wav)
+  app.get('/api/benchmarks', (_req, res) => {
+    try {
+      const results = readBenchmarksFromDisk();
+      res.json({ results });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Failed to read benchmarks from disk',
+      });
+    }
+  });
+
+  app.post('/api/benchmarks', (req, res) => {
+    try {
+      const body = req.body as {
+        result?: BenchmarkTestResult;
+        wavBase64?: string | null;
+      };
+      if (!body || !body.result || !body.result.id) {
+        res.status(400).json({ error: 'Missing valid benchmark result payload' });
+        return;
+      }
+      const saved = saveBenchmarkToDisk(body.result, body.wavBase64);
+      res.status(201).json({ saved });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Failed to save benchmark to disk',
+      });
+    }
+  });
+
+  app.get('/api/benchmarks/:id/audio', (req, res) => {
+    const wavPath = getAudioFilePath(req.params.id);
+    if (!fs.existsSync(wavPath)) {
+      res.status(404).json({ error: 'Audio file not found in data/audio' });
+      return;
+    }
+    res.setHeader('Content-Type', 'audio/wav');
+    res.sendFile(wavPath);
+  });
+
+  app.delete('/api/benchmarks/:id', (req, res) => {
+    try {
+      const updated = deleteBenchmarkFromDisk(req.params.id);
+      res.json({ results: updated });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Failed to delete benchmark',
+      });
+    }
+  });
+
+  app.delete('/api/benchmarks', (_req, res) => {
+    try {
+      clearAllBenchmarksFromDisk();
+      res.json({ results: [] });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Failed to clear benchmarks',
       });
     }
   });

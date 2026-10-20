@@ -36,9 +36,13 @@ import {
 } from '../shared/audio/wavParser.js';
 import { calculateAccuracyMetrics } from '../shared/metrics/werCer.js';
 import {
+  clearBenchmarksOnServer,
+  deleteBenchmarkFromServer,
   exportResultsToCsv,
   exportResultsToJson,
+  fetchBenchmarksFromServer,
   loadSavedResults,
+  persistBenchmarkToServer,
   saveResultsToStorage,
 } from './services/storageAndExport.js';
 import {
@@ -78,7 +82,10 @@ const SavedAudioPlayerCell: React.FC<SavedAudioPlayerProps> = ({
   profileId,
   hasSavedAudio,
 }) => {
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const serverAudioUrl = `/api/benchmarks/${encodeURIComponent(runId)}/audio`;
+  const [audioUrl, setAudioUrl] = useState<string | null>(
+    hasSavedAudio ? serverAudioUrl : null
+  );
   const [wavBytes, setWavBytes] = useState<Uint8Array | null>(null);
 
   useEffect(() => {
@@ -86,8 +93,12 @@ const SavedAudioPlayerCell: React.FC<SavedAudioPlayerProps> = ({
     let createdUrl: string | null = null;
 
     if (!hasSavedAudio) {
+      setAudioUrl(null);
       return undefined;
     }
+
+    // Prefer server-persisted WAV in data/audio/<runId>.wav; fallback to IndexedDB if needed
+    setAudioUrl(serverAudioUrl);
 
     void loadTestAudioFromDb(runId).then((record) => {
       if (!active || !record) return;
@@ -105,15 +116,24 @@ const SavedAudioPlayerCell: React.FC<SavedAudioPlayerProps> = ({
         URL.revokeObjectURL(createdUrl);
       }
     };
-  }, [runId, hasSavedAudio]);
+  }, [runId, hasSavedAudio, serverAudioUrl]);
 
   if (!hasSavedAudio || !audioUrl) {
     return <span className="text-muted">Sin audio</span>;
   }
 
   const handleDownload = () => {
-    if (!wavBytes) return;
-    triggerWavDownload(wavBytes, `audio-${profileId}-${runId.slice(-5)}.wav`);
+    const filename = `audio-${profileId}-${runId.slice(-5)}.wav`;
+    if (wavBytes) {
+      triggerWavDownload(wavBytes, filename);
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = serverAudioUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -203,6 +223,7 @@ export const App: React.FC = () => {
   const scriptNodeRef = useRef<ScriptProcessorNode | null>(null);
   const elapsedTimerRef = useRef<number | null>(null);
   const processedPcm16ChunksRef = useRef<Int16Array[]>([]);
+  const sessionOutputSampleRateRef = useRef<number>(48000);
 
   // Timing refs for accurate millisecond telemetry
   const connectInitiatedAtRef = useRef<number>(0);
@@ -239,6 +260,44 @@ export const App: React.FC = () => {
   useEffect(() => {
     void checkBackendHealth();
   }, [checkBackendHealth]);
+
+  // Load persisted benchmarks from /data/benchmarks.json on startup (and migrate any local browser runs)
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const diskResults = await fetchBenchmarksFromServer();
+        const localResults = loadSavedResults();
+        const diskIds = new Set(diskResults.map((r) => r.id));
+        const unsyncedLocal = localResults.filter((r) => !diskIds.has(r.id));
+
+        if (unsyncedLocal.length > 0) {
+          // Migrate any prior browser-only results (in reverse order so newest stays first) into /data
+          for (const item of [...unsyncedLocal].reverse()) {
+            let wavBase64: string | null = null;
+            if (item.hasSavedAudio) {
+              const audioRecord = await loadTestAudioFromDb(item.id);
+              if (audioRecord?.wavBytes) {
+                wavBase64 = uint8ArrayToBase64(audioRecord.wavBytes);
+              }
+            }
+            await persistBenchmarkToServer(item, wavBase64);
+          }
+          const merged = await fetchBenchmarksFromServer();
+          if (active) {
+            setSavedResults(merged);
+          }
+        } else if (active) {
+          setSavedResults(diskResults);
+        }
+      } catch (err) {
+        console.warn('Could not fetch benchmarks from /api/benchmarks, using local cache:', err);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     saveResultsToStorage(savedResults);
@@ -363,7 +422,7 @@ export const App: React.FC = () => {
     };
   }, [cleanupAudioResources]);
 
-  // Save a completed or active test result (including processed WAV audio, transcribed text, corrected real text, telephony profile, and WER)
+  // Save a completed or active test result (persisting to /data/benchmarks.json + /data/audio/<id>.wav as well as IndexedDB)
   const saveCurrentTestResult = useCallback(async () => {
     const transcriptToSave = fullTranscript.trim();
     const referenceToSave = realTranscript.trim() || transcriptToSave;
@@ -386,7 +445,9 @@ export const App: React.FC = () => {
       latestProcessedWavBytes && latestProcessedWavBytes.byteLength > 44
     );
 
+    let wavBase64: string | null = null;
     if (hasAudio && latestProcessedWavBytes) {
+      wavBase64 = uint8ArrayToBase64(latestProcessedWavBytes);
       await saveTestAudioToDb({
         id: runId,
         wavBytes: latestProcessedWavBytes,
@@ -437,8 +498,15 @@ export const App: React.FC = () => {
       errors,
     };
 
-    setSavedResults((prev) => [newResult, ...prev]);
-    return newResult;
+    try {
+      const persisted = await persistBenchmarkToServer(newResult, wavBase64);
+      setSavedResults((prev) => [persisted, ...prev.filter((r) => r.id !== persisted.id)]);
+      return persisted;
+    } catch (err) {
+      console.error('Failed to persist benchmark to /data on server:', err);
+      setSavedResults((prev) => [newResult, ...prev]);
+      return newResult;
+    }
   }, [
     fullTranscript,
     realTranscript,
@@ -468,16 +536,18 @@ export const App: React.FC = () => {
     errors,
   ]);
 
-  // Delete a single saved run + its audio in IndexedDB
+  // Delete a single saved run + its audio in /data and IndexedDB
   const handleDeleteSavedRun = (runId: string) => {
     setSavedResults((prev) => prev.filter((item) => item.id !== runId));
     void deleteTestAudioFromDb(runId);
+    void deleteBenchmarkFromServer(runId);
   };
 
-  // Clear all saved runs + all audio in IndexedDB
+  // Clear all saved runs + all audio in /data and IndexedDB
   const handleClearAllRuns = () => {
     setSavedResults([]);
     void clearAllTestAudioFromDb();
+    void clearBenchmarksOnServer();
   };
 
   // Send manual commit chunk
@@ -506,7 +576,9 @@ export const App: React.FC = () => {
     setIsStreaming(false);
     cleanupAudioResources();
 
-    // Combine processed PCM16 chunks at outputSampleRate into a playable/downloadable WAV file
+    const targetRate = sessionOutputSampleRateRef.current;
+
+    // Combine processed PCM16 chunks at targetRate into a playable/downloadable WAV file
     if (processedPcm16ChunksRef.current.length > 0) {
       const totalSamples = processedPcm16ChunksRef.current.reduce(
         (acc, chunk) => acc + chunk.length,
@@ -518,7 +590,7 @@ export const App: React.FC = () => {
         combinedPcm16.set(chunk, offset);
         offset += chunk.length;
       }
-      const wavBytes = encodePcm16ToWav(combinedPcm16, outputSampleRate);
+      const wavBytes = encodePcm16ToWav(combinedPcm16, targetRate);
       setLatestProcessedWavBytes(wavBytes);
     }
 
@@ -534,7 +606,7 @@ export const App: React.FC = () => {
         message_type: 'input_audio_chunk',
         audio_base_64: uint8ArrayToBase64(silentBytes),
         commit: true,
-        sample_rate: outputSampleRate,
+        sample_rate: targetRate,
       };
       try {
         ws.send(JSON.stringify(finalChunk));
@@ -554,7 +626,7 @@ export const App: React.FC = () => {
       setConnectionStatus('disconnected');
       isStoppingRef.current = false;
     }
-  }, [cleanupAudioResources, activeProfile, outputSampleRate]);
+  }, [cleanupAudioResources, activeProfile]);
 
   // Start Live Microphone Streaming Session
   const handleStartStream = async () => {
@@ -621,6 +693,7 @@ export const App: React.FC = () => {
       'ulaw_8000'
     );
 
+    sessionOutputSampleRateRef.current = processor.outputSampleRate;
     setInputSampleRate(processor.inputSampleRate);
     setOutputSampleRate(processor.outputSampleRate);
 

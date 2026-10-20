@@ -40,6 +40,43 @@ export function saveReferenceTextToStorage(text: string): void {
   }
 }
 
+export async function fetchBenchmarksFromServer(): Promise<BenchmarkTestResult[]> {
+  const res = await fetch('/api/benchmarks');
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} loading benchmarks`);
+  }
+  const data = (await res.json()) as { results?: BenchmarkTestResult[] };
+  return Array.isArray(data.results) ? data.results : [];
+}
+
+export async function persistBenchmarkToServer(
+  result: BenchmarkTestResult,
+  wavBase64?: string | null
+): Promise<BenchmarkTestResult> {
+  const res = await fetch('/api/benchmarks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ result, wavBase64: wavBase64 ?? null }),
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} saving benchmark`);
+  }
+  const data = (await res.json()) as { saved: BenchmarkTestResult };
+  return data.saved;
+}
+
+export async function deleteBenchmarkFromServer(runId: string): Promise<void> {
+  await fetch(`/api/benchmarks/${encodeURIComponent(runId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function clearBenchmarksOnServer(): Promise<void> {
+  await fetch('/api/benchmarks', {
+    method: 'DELETE',
+  });
+}
+
 function escapeCsvCell(value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined) {
     return '';

@@ -1,0 +1,1088 @@
+[
+  {
+    "id": "run_1792516460944_tkhsz",
+    "createdAt": "2026-10-20T17:14:20.944Z",
+    "sourceType": "microphone",
+    "sourceName": "Micrófono",
+    "profileId": "ulaw_8000",
+    "profileName": "G.711 μ-law 8kHz",
+    "elevenLabsFormat": "ulaw_8000",
+    "inputSampleRate": 48000,
+    "outputSampleRate": 8000,
+    "commitStrategy": "vad",
+    "languageCode": "es",
+    "sessionId": "a94e2fa0c65443799abc1c6596004e1f",
+    "finalTranscript": "99999999999.",
+    "referenceTranscript": "99999999999.",
+    "evaluationLabel": "correct",
+    "hasSavedAudio": true,
+    "accuracy": {
+      "wer": 0,
+      "cer": 0,
+      "wordAccuracy": 1,
+      "charAccuracy": 1,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "hits": 1,
+      "referenceWordCount": 1,
+      "hypothesisWordCount": 1,
+      "referenceCharCount": 11,
+      "hypothesisCharCount": 11,
+      "charSubstitutions": 0,
+      "charDeletions": 0,
+      "charInsertions": 0,
+      "charHits": 11,
+      "wordAlignment": [
+        {
+          "op": "hit",
+          "reference": "99999999999",
+          "hypothesis": "99999999999"
+        }
+      ]
+    },
+    "latency": {
+      "handshakeLatencyMs": 727,
+      "timeToFirstPartialMs": 3384,
+      "timeToFirstCommittedMs": 9733,
+      "lastPartialLatencyMs": 106,
+      "averagePartialLatencyMs": 65,
+      "lastCommittedLatencyMs": 351,
+      "totalSessionDurationMs": 9609,
+      "audioDurationStreamedSec": 9.472000000000007,
+      "chunksSent": 111,
+      "bytesSent": 75776,
+      "partialEventCount": 7,
+      "committedEventCount": 1
+    },
+    "signalMetrics": {
+      "rmsDbFs": -54.4,
+      "peakDbFs": -40.5,
+      "quantizationSnrDb": 27.68
+    },
+    "warnings": [],
+    "errors": []
+  },
+  {
+    "id": "run_1792516348072_ttusj",
+    "createdAt": "2026-10-20T17:12:28.072Z",
+    "sourceType": "microphone",
+    "sourceName": "Micrófono",
+    "profileId": "ulaw_8000",
+    "profileName": "G.711 μ-law 8kHz",
+    "elevenLabsFormat": "ulaw_8000",
+    "inputSampleRate": 48000,
+    "outputSampleRate": 8000,
+    "commitStrategy": "vad",
+    "languageCode": "es",
+    "sessionId": "02f7102c9d5d4113858d36a470c3e16e",
+    "finalTranscript": "U-A-123456789-U-S. U A 123456789US.",
+    "referenceTranscript": "U-A-123456789-U-S. U A 123456789US.",
+    "evaluationLabel": "correct",
+    "hasSavedAudio": true,
+    "accuracy": {
+      "wer": 0,
+      "cer": 0,
+      "wordAccuracy": 1,
+      "charAccuracy": 1,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "hits": 8,
+      "referenceWordCount": 8,
+      "hypothesisWordCount": 8,
+      "referenceCharCount": 33,
+      "hypothesisCharCount": 33,
+      "charSubstitutions": 0,
+      "charDeletions": 0,
+      "charInsertions": 0,
+      "charHits": 33,
+      "wordAlignment": [
+        {
+          "op": "hit",
+          "reference": "u",
+          "hypothesis": "u"
+        },
+        {
+          "op": "hit",
+          "reference": "a",
+          "hypothesis": "a"
+        },
+        {
+          "op": "hit",
+          "reference": "123456789",
+          "hypothesis": "123456789"
+        },
+        {
+          "op": "hit",
+          "reference": "u",
+          "hypothesis": "u"
+        },
+        {
+          "op": "hit",
+          "reference": "s",
+          "hypothesis": "s"
+        },
+        {
+          "op": "hit",
+          "reference": "u",
+          "hypothesis": "u"
+        },
+        {
+          "op": "hit",
+          "reference": "a",
+          "hypothesis": "a"
+        },
+        {
+          "op": "hit",
+          "reference": "123456789us",
+          "hypothesis": "123456789us"
+        }
+      ]
+    },
+    "latency": {
+      "handshakeLatencyMs": 557,
+      "timeToFirstPartialMs": 2373,
+      "timeToFirstCommittedMs": 7267,
+      "lastPartialLatencyMs": 425,
+      "averagePartialLatencyMs": 109,
+      "lastCommittedLatencyMs": 393,
+      "totalSessionDurationMs": 7008,
+      "audioDurationStreamedSec": 6.997333333333344,
+      "chunksSent": 82,
+      "bytesSent": 55979,
+      "partialEventCount": 6,
+      "committedEventCount": 1
+    },
+    "signalMetrics": {
+      "rmsDbFs": -57.2,
+      "peakDbFs": -45.2,
+      "quantizationSnrDb": 25.18
+    },
+    "warnings": [],
+    "errors": []
+  },
+  {
+    "id": "run_1792516318362_3mav9",
+    "createdAt": "2026-10-20T17:11:58.362Z",
+    "sourceType": "microphone",
+    "sourceName": "Micrófono",
+    "profileId": "ulaw_8000",
+    "profileName": "G.711 μ-law 8kHz",
+    "elevenLabsFormat": "ulaw_8000",
+    "inputSampleRate": 48000,
+    "outputSampleRate": 8000,
+    "commitStrategy": "vad",
+    "languageCode": "es",
+    "sessionId": "ef5365fac3154744930ef75a1eb52bf9",
+    "finalTranscript": "Lugo, Francia, 987653333. Caceres, Navarra.",
+    "referenceTranscript": "Lugo, Francia, 987653333. Caceres, Navarra.",
+    "evaluationLabel": "correct",
+    "hasSavedAudio": true,
+    "accuracy": {
+      "wer": 0,
+      "cer": 0,
+      "wordAccuracy": 1,
+      "charAccuracy": 1,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "hits": 5,
+      "referenceWordCount": 5,
+      "hypothesisWordCount": 5,
+      "referenceCharCount": 38,
+      "hypothesisCharCount": 38,
+      "charSubstitutions": 0,
+      "charDeletions": 0,
+      "charInsertions": 0,
+      "charHits": 38,
+      "wordAlignment": [
+        {
+          "op": "hit",
+          "reference": "lugo",
+          "hypothesis": "lugo"
+        },
+        {
+          "op": "hit",
+          "reference": "francia",
+          "hypothesis": "francia"
+        },
+        {
+          "op": "hit",
+          "reference": "987653333",
+          "hypothesis": "987653333"
+        },
+        {
+          "op": "hit",
+          "reference": "caceres",
+          "hypothesis": "caceres"
+        },
+        {
+          "op": "hit",
+          "reference": "navarra",
+          "hypothesis": "navarra"
+        }
+      ]
+    },
+    "latency": {
+      "handshakeLatencyMs": 843,
+      "timeToFirstPartialMs": 2367,
+      "timeToFirstCommittedMs": 11369,
+      "lastPartialLatencyMs": 70,
+      "averagePartialLatencyMs": 37,
+      "lastCommittedLatencyMs": 347,
+      "totalSessionDurationMs": 11026,
+      "audioDurationStreamedSec": 11.09333333333333,
+      "chunksSent": 130,
+      "bytesSent": 88747,
+      "partialEventCount": 10,
+      "committedEventCount": 1
+    },
+    "signalMetrics": {
+      "rmsDbFs": -69.4,
+      "peakDbFs": -58.3,
+      "quantizationSnrDb": 13.35
+    },
+    "warnings": [],
+    "errors": []
+  },
+  {
+    "id": "run_1792516285414_b621p",
+    "createdAt": "2026-10-20T17:11:25.414Z",
+    "sourceType": "microphone",
+    "sourceName": "Micrófono",
+    "profileId": "ulaw_8000",
+    "profileName": "G.711 μ-law 8kHz",
+    "elevenLabsFormat": "ulaw_8000",
+    "inputSampleRate": 48000,
+    "outputSampleRate": 8000,
+    "commitStrategy": "vad",
+    "languageCode": "es",
+    "sessionId": "2053477daa3e4aaa8e11be058f8b22ea",
+    "finalTranscript": "R de ranón, Y... Mmm, 123456789, F de Francia, R de Roma.",
+    "referenceTranscript": "R de Ramón, Y... Mmm, 123456789, F de Francia, R de Roma.",
+    "evaluationLabel": "incorrect",
+    "hasSavedAudio": true,
+    "accuracy": {
+      "wer": 0.0833,
+      "cer": 0.0204,
+      "wordAccuracy": 0.9167,
+      "charAccuracy": 0.9796,
+      "substitutions": 1,
+      "deletions": 0,
+      "insertions": 0,
+      "hits": 11,
+      "referenceWordCount": 12,
+      "hypothesisWordCount": 12,
+      "referenceCharCount": 49,
+      "hypothesisCharCount": 49,
+      "charSubstitutions": 1,
+      "charDeletions": 0,
+      "charInsertions": 0,
+      "charHits": 48,
+      "wordAlignment": [
+        {
+          "op": "hit",
+          "reference": "r",
+          "hypothesis": "r"
+        },
+        {
+          "op": "hit",
+          "reference": "de",
+          "hypothesis": "de"
+        },
+        {
+          "op": "substitution",
+          "reference": "ramón",
+          "hypothesis": "ranón"
+        },
+        {
+          "op": "hit",
+          "reference": "y",
+          "hypothesis": "y"
+        },
+        {
+          "op": "hit",
+          "reference": "mmm",
+          "hypothesis": "mmm"
+        },
+        {
+          "op": "hit",
+          "reference": "123456789",
+          "hypothesis": "123456789"
+        },
+        {
+          "op": "hit",
+          "reference": "f",
+          "hypothesis": "f"
+        },
+        {
+          "op": "hit",
+          "reference": "de",
+          "hypothesis": "de"
+        },
+        {
+          "op": "hit",
+          "reference": "francia",
+          "hypothesis": "francia"
+        },
+        {
+          "op": "hit",
+          "reference": "r",
+          "hypothesis": "r"
+        },
+        {
+          "op": "hit",
+          "reference": "de",
+          "hypothesis": "de"
+        },
+        {
+          "op": "hit",
+          "reference": "roma",
+          "hypothesis": "roma"
+        }
+      ]
+    },
+    "latency": {
+      "handshakeLatencyMs": 429,
+      "timeToFirstPartialMs": 2469,
+      "timeToFirstCommittedMs": 5866,
+      "lastPartialLatencyMs": 63,
+      "averagePartialLatencyMs": 39,
+      "lastCommittedLatencyMs": 427,
+      "totalSessionDurationMs": 13401,
+      "audioDurationStreamedSec": 13.397333333333316,
+      "chunksSent": 157,
+      "bytesSent": 107179,
+      "partialEventCount": 12,
+      "committedEventCount": 2
+    },
+    "signalMetrics": {
+      "rmsDbFs": -69.2,
+      "peakDbFs": -58.3,
+      "quantizationSnrDb": 13.28
+    },
+    "warnings": [],
+    "errors": []
+  },
+  {
+    "id": "run_1792516229319_973dk",
+    "createdAt": "2026-10-20T17:10:29.319Z",
+    "sourceType": "microphone",
+    "sourceName": "Micrófono",
+    "profileId": "ulaw_8000",
+    "profileName": "G.711 μ-law 8kHz",
+    "elevenLabsFormat": "ulaw_8000",
+    "inputSampleRate": 48000,
+    "outputSampleRate": 8000,
+    "commitStrategy": "vad",
+    "languageCode": "es",
+    "sessionId": "5019cc2b04294727944079e2711bbb7c",
+    "finalTranscript": "3000123456700000.",
+    "referenceTranscript": "3000123456700000.",
+    "evaluationLabel": "correct",
+    "hasSavedAudio": true,
+    "accuracy": {
+      "wer": 0,
+      "cer": 0,
+      "wordAccuracy": 1,
+      "charAccuracy": 1,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "hits": 1,
+      "referenceWordCount": 1,
+      "hypothesisWordCount": 1,
+      "referenceCharCount": 16,
+      "hypothesisCharCount": 16,
+      "charSubstitutions": 0,
+      "charDeletions": 0,
+      "charInsertions": 0,
+      "charHits": 16,
+      "wordAlignment": [
+        {
+          "op": "hit",
+          "reference": "3000123456700000",
+          "hypothesis": "3000123456700000"
+        }
+      ]
+    },
+    "latency": {
+      "handshakeLatencyMs": 561,
+      "timeToFirstPartialMs": 2453,
+      "timeToFirstCommittedMs": 12073,
+      "lastPartialLatencyMs": 441,
+      "averagePartialLatencyMs": 68,
+      "lastCommittedLatencyMs": 463,
+      "totalSessionDurationMs": 11703,
+      "audioDurationStreamedSec": 11.69066666666666,
+      "chunksSent": 137,
+      "bytesSent": 93526,
+      "partialEventCount": 11,
+      "committedEventCount": 1
+    },
+    "signalMetrics": {
+      "rmsDbFs": -66.1,
+      "peakDbFs": -55.3,
+      "quantizationSnrDb": 16.69
+    },
+    "warnings": [],
+    "errors": []
+  },
+  {
+    "id": "run_1792516197555_qgz94",
+    "createdAt": "2026-10-20T17:09:57.555Z",
+    "sourceType": "microphone",
+    "sourceName": "Micrófono",
+    "profileId": "ulaw_8000",
+    "profileName": "G.711 μ-law 8kHz",
+    "elevenLabsFormat": "ulaw_8000",
+    "inputSampleRate": 48000,
+    "outputSampleRate": 8000,
+    "commitStrategy": "vad",
+    "languageCode": "es",
+    "sessionId": "2be3f945a07049e3953711ae88711607",
+    "finalTranscript": "PX5Y7T0909876540012345Z.",
+    "referenceTranscript": "PX5Y7T0909876540012345Z.",
+    "evaluationLabel": "correct",
+    "hasSavedAudio": true,
+    "accuracy": {
+      "wer": 0,
+      "cer": 0,
+      "wordAccuracy": 1,
+      "charAccuracy": 1,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "hits": 1,
+      "referenceWordCount": 1,
+      "hypothesisWordCount": 1,
+      "referenceCharCount": 23,
+      "hypothesisCharCount": 23,
+      "charSubstitutions": 0,
+      "charDeletions": 0,
+      "charInsertions": 0,
+      "charHits": 23,
+      "wordAlignment": [
+        {
+          "op": "hit",
+          "reference": "px5y7t0909876540012345z",
+          "hypothesis": "px5y7t0909876540012345z"
+        }
+      ]
+    },
+    "latency": {
+      "handshakeLatencyMs": 655,
+      "timeToFirstPartialMs": 2392,
+      "timeToFirstCommittedMs": 12276,
+      "lastPartialLatencyMs": 1,
+      "averagePartialLatencyMs": 44,
+      "lastCommittedLatencyMs": 275,
+      "totalSessionDurationMs": 12107,
+      "audioDurationStreamedSec": 12.117333333333324,
+      "chunksSent": 142,
+      "bytesSent": 96939,
+      "partialEventCount": 12,
+      "committedEventCount": 1
+    },
+    "signalMetrics": {
+      "rmsDbFs": -52.7,
+      "peakDbFs": -38.4,
+      "quantizationSnrDb": 29.03
+    },
+    "warnings": [],
+    "errors": []
+  },
+  {
+    "id": "run_1792516146837_osmlf",
+    "createdAt": "2026-10-20T17:09:06.837Z",
+    "sourceType": "microphone",
+    "sourceName": "Micrófono",
+    "profileId": "ulaw_8000",
+    "profileName": "G.711 μ-law 8kHz",
+    "elevenLabsFormat": "ulaw_8000",
+    "inputSampleRate": 48000,
+    "outputSampleRate": 8000,
+    "commitStrategy": "vad",
+    "languageCode": "es",
+    "sessionId": "be839702e9d74d92bd602067e097a817",
+    "finalTranscript": "Te digo: P, Q, 4, F, 6, R, 0, 7, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, de Dinamarca.",
+    "referenceTranscript": "Te digo: P, Q, 4, F, 6, R, 0, 7, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, D de Dinamarca.",
+    "evaluationLabel": "incorrect",
+    "hasSavedAudio": true,
+    "accuracy": {
+      "wer": 0.037,
+      "cer": 0.0303,
+      "wordAccuracy": 0.963,
+      "charAccuracy": 0.9697,
+      "substitutions": 0,
+      "deletions": 1,
+      "insertions": 0,
+      "hits": 26,
+      "referenceWordCount": 27,
+      "hypothesisWordCount": 26,
+      "referenceCharCount": 66,
+      "hypothesisCharCount": 64,
+      "charSubstitutions": 0,
+      "charDeletions": 2,
+      "charInsertions": 0,
+      "charHits": 64,
+      "wordAlignment": [
+        {
+          "op": "hit",
+          "reference": "te",
+          "hypothesis": "te"
+        },
+        {
+          "op": "hit",
+          "reference": "digo",
+          "hypothesis": "digo"
+        },
+        {
+          "op": "hit",
+          "reference": "p",
+          "hypothesis": "p"
+        },
+        {
+          "op": "hit",
+          "reference": "q",
+          "hypothesis": "q"
+        },
+        {
+          "op": "hit",
+          "reference": "4",
+          "hypothesis": "4"
+        },
+        {
+          "op": "hit",
+          "reference": "f",
+          "hypothesis": "f"
+        },
+        {
+          "op": "hit",
+          "reference": "6",
+          "hypothesis": "6"
+        },
+        {
+          "op": "hit",
+          "reference": "r",
+          "hypothesis": "r"
+        },
+        {
+          "op": "hit",
+          "reference": "0",
+          "hypothesis": "0"
+        },
+        {
+          "op": "hit",
+          "reference": "7",
+          "hypothesis": "7"
+        },
+        {
+          "op": "hit",
+          "reference": "0",
+          "hypothesis": "0"
+        },
+        {
+          "op": "hit",
+          "reference": "1",
+          "hypothesis": "1"
+        },
+        {
+          "op": "hit",
+          "reference": "2",
+          "hypothesis": "2"
+        },
+        {
+          "op": "hit",
+          "reference": "3",
+          "hypothesis": "3"
+        },
+        {
+          "op": "hit",
+          "reference": "4",
+          "hypothesis": "4"
+        },
+        {
+          "op": "hit",
+          "reference": "5",
+          "hypothesis": "5"
+        },
+        {
+          "op": "hit",
+          "reference": "6",
+          "hypothesis": "6"
+        },
+        {
+          "op": "hit",
+          "reference": "0",
+          "hypothesis": "0"
+        },
+        {
+          "op": "hit",
+          "reference": "1",
+          "hypothesis": "1"
+        },
+        {
+          "op": "hit",
+          "reference": "2",
+          "hypothesis": "2"
+        },
+        {
+          "op": "hit",
+          "reference": "3",
+          "hypothesis": "3"
+        },
+        {
+          "op": "hit",
+          "reference": "4",
+          "hypothesis": "4"
+        },
+        {
+          "op": "hit",
+          "reference": "5",
+          "hypothesis": "5"
+        },
+        {
+          "op": "hit",
+          "reference": "6",
+          "hypothesis": "6"
+        },
+        {
+          "op": "deletion",
+          "reference": "d"
+        },
+        {
+          "op": "hit",
+          "reference": "de",
+          "hypothesis": "de"
+        },
+        {
+          "op": "hit",
+          "reference": "dinamarca",
+          "hypothesis": "dinamarca"
+        }
+      ]
+    },
+    "latency": {
+      "handshakeLatencyMs": 370,
+      "timeToFirstPartialMs": 2422,
+      "timeToFirstCommittedMs": 22617,
+      "lastPartialLatencyMs": 75,
+      "averagePartialLatencyMs": 51,
+      "lastCommittedLatencyMs": 605,
+      "totalSessionDurationMs": 22108,
+      "audioDurationStreamedSec": 22.10133333333339,
+      "chunksSent": 259,
+      "bytesSent": 176811,
+      "partialEventCount": 22,
+      "committedEventCount": 1
+    },
+    "signalMetrics": {
+      "rmsDbFs": -66.5,
+      "peakDbFs": -55.3,
+      "quantizationSnrDb": 15.91
+    },
+    "warnings": [],
+    "errors": []
+  },
+  {
+    "id": "run_1792516087786_e2dcn",
+    "createdAt": "2026-10-20T17:08:07.786Z",
+    "sourceType": "microphone",
+    "sourceName": "Micrófono",
+    "profileId": "ulaw_8000",
+    "profileName": "G.711 μ-law 8kHz",
+    "elevenLabsFormat": "ulaw_8000",
+    "inputSampleRate": 48000,
+    "outputSampleRate": 8000,
+    "commitStrategy": "vad",
+    "languageCode": "es",
+    "sessionId": "05fd44fd030b4e83805168c97d0daa86",
+    "finalTranscript": "E de España, otra E de España, 112233445, E de España, S de Sevilla.",
+    "referenceTranscript": "E de España, otra E de España, 112233445, E de España, S de Sevilla.",
+    "evaluationLabel": "correct",
+    "hasSavedAudio": true,
+    "accuracy": {
+      "wer": 0,
+      "cer": 0,
+      "wordAccuracy": 1,
+      "charAccuracy": 1,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "hits": 14,
+      "referenceWordCount": 14,
+      "hypothesisWordCount": 14,
+      "referenceCharCount": 63,
+      "hypothesisCharCount": 63,
+      "charSubstitutions": 0,
+      "charDeletions": 0,
+      "charInsertions": 0,
+      "charHits": 63,
+      "wordAlignment": [
+        {
+          "op": "hit",
+          "reference": "e",
+          "hypothesis": "e"
+        },
+        {
+          "op": "hit",
+          "reference": "de",
+          "hypothesis": "de"
+        },
+        {
+          "op": "hit",
+          "reference": "españa",
+          "hypothesis": "españa"
+        },
+        {
+          "op": "hit",
+          "reference": "otra",
+          "hypothesis": "otra"
+        },
+        {
+          "op": "hit",
+          "reference": "e",
+          "hypothesis": "e"
+        },
+        {
+          "op": "hit",
+          "reference": "de",
+          "hypothesis": "de"
+        },
+        {
+          "op": "hit",
+          "reference": "españa",
+          "hypothesis": "españa"
+        },
+        {
+          "op": "hit",
+          "reference": "112233445",
+          "hypothesis": "112233445"
+        },
+        {
+          "op": "hit",
+          "reference": "e",
+          "hypothesis": "e"
+        },
+        {
+          "op": "hit",
+          "reference": "de",
+          "hypothesis": "de"
+        },
+        {
+          "op": "hit",
+          "reference": "españa",
+          "hypothesis": "españa"
+        },
+        {
+          "op": "hit",
+          "reference": "s",
+          "hypothesis": "s"
+        },
+        {
+          "op": "hit",
+          "reference": "de",
+          "hypothesis": "de"
+        },
+        {
+          "op": "hit",
+          "reference": "sevilla",
+          "hypothesis": "sevilla"
+        }
+      ]
+    },
+    "latency": {
+      "handshakeLatencyMs": 3890,
+      "timeToFirstPartialMs": 4205,
+      "timeToFirstCommittedMs": 10257,
+      "lastPartialLatencyMs": 63,
+      "averagePartialLatencyMs": 38,
+      "lastCommittedLatencyMs": 271,
+      "totalSessionDurationMs": 10101,
+      "audioDurationStreamedSec": 10.069333333333336,
+      "chunksSent": 118,
+      "bytesSent": 80555,
+      "partialEventCount": 10,
+      "committedEventCount": 1
+    },
+    "signalMetrics": {
+      "rmsDbFs": -69.2,
+      "peakDbFs": -60.2,
+      "quantizationSnrDb": 13.32
+    },
+    "warnings": [],
+    "errors": []
+  },
+  {
+    "id": "run_1792516059283_yx7u9",
+    "createdAt": "2026-10-20T17:07:39.283Z",
+    "sourceType": "microphone",
+    "sourceName": "Micrófono",
+    "profileId": "ulaw_8000",
+    "profileName": "G.711 μ-law 8kHz",
+    "elevenLabsFormat": "ulaw_8000",
+    "inputSampleRate": 48000,
+    "outputSampleRate": 8000,
+    "commitStrategy": "vad",
+    "languageCode": "es",
+    "sessionId": "220697a09dcf49f796f7a21894951639",
+    "finalTranscript": "C, D, 123456789, E, S.",
+    "referenceTranscript": "C, D, 123456789, E, S.",
+    "evaluationLabel": "correct",
+    "hasSavedAudio": true,
+    "accuracy": {
+      "wer": 0,
+      "cer": 0,
+      "wordAccuracy": 1,
+      "charAccuracy": 1,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "hits": 5,
+      "referenceWordCount": 5,
+      "hypothesisWordCount": 5,
+      "referenceCharCount": 17,
+      "hypothesisCharCount": 17,
+      "charSubstitutions": 0,
+      "charDeletions": 0,
+      "charInsertions": 0,
+      "charHits": 17,
+      "wordAlignment": [
+        {
+          "op": "hit",
+          "reference": "c",
+          "hypothesis": "c"
+        },
+        {
+          "op": "hit",
+          "reference": "d",
+          "hypothesis": "d"
+        },
+        {
+          "op": "hit",
+          "reference": "123456789",
+          "hypothesis": "123456789"
+        },
+        {
+          "op": "hit",
+          "reference": "e",
+          "hypothesis": "e"
+        },
+        {
+          "op": "hit",
+          "reference": "s",
+          "hypothesis": "s"
+        }
+      ]
+    },
+    "latency": {
+      "handshakeLatencyMs": 607,
+      "timeToFirstPartialMs": 2454,
+      "timeToFirstCommittedMs": 8353,
+      "lastPartialLatencyMs": 183,
+      "averagePartialLatencyMs": 59,
+      "lastCommittedLatencyMs": 340,
+      "totalSessionDurationMs": 8111,
+      "audioDurationStreamedSec": 8.106666666666682,
+      "chunksSent": 95,
+      "bytesSent": 64854,
+      "partialEventCount": 7,
+      "committedEventCount": 1
+    },
+    "signalMetrics": {
+      "rmsDbFs": -68,
+      "peakDbFs": -56.7,
+      "quantizationSnrDb": 14.35
+    },
+    "warnings": [],
+    "errors": []
+  },
+  {
+    "id": "run_1792516027944_a8nmx",
+    "createdAt": "2026-10-20T17:07:07.944Z",
+    "sourceType": "microphone",
+    "sourceName": "Micrófono",
+    "profileId": "ulaw_8000",
+    "profileName": "G.711 μ-law 8kHz",
+    "elevenLabsFormat": "ulaw_8000",
+    "inputSampleRate": 48000,
+    "outputSampleRate": 8000,
+    "commitStrategy": "vad",
+    "languageCode": "es",
+    "sessionId": "0415b54251434a41bd6badf46d2ec942",
+    "finalTranscript": "Fede Cáceres, de Dinamarca, 123456789, e de España, es de Sevilla.",
+    "referenceTranscript": "C de Cáceres, D de Dinamarca, 123456789, e de España, S de Sevilla.",
+    "evaluationLabel": "incorrect",
+    "hasSavedAudio": true,
+    "accuracy": {
+      "wer": 0.3077,
+      "cer": 0.0806,
+      "wordAccuracy": 0.6923,
+      "charAccuracy": 0.9194,
+      "substitutions": 2,
+      "deletions": 2,
+      "insertions": 0,
+      "hits": 9,
+      "referenceWordCount": 13,
+      "hypothesisWordCount": 11,
+      "referenceCharCount": 62,
+      "hypothesisCharCount": 61,
+      "charSubstitutions": 2,
+      "charDeletions": 2,
+      "charInsertions": 1,
+      "charHits": 58,
+      "wordAlignment": [
+        {
+          "op": "deletion",
+          "reference": "c"
+        },
+        {
+          "op": "substitution",
+          "reference": "de",
+          "hypothesis": "fede"
+        },
+        {
+          "op": "hit",
+          "reference": "cáceres",
+          "hypothesis": "cáceres"
+        },
+        {
+          "op": "deletion",
+          "reference": "d"
+        },
+        {
+          "op": "hit",
+          "reference": "de",
+          "hypothesis": "de"
+        },
+        {
+          "op": "hit",
+          "reference": "dinamarca",
+          "hypothesis": "dinamarca"
+        },
+        {
+          "op": "hit",
+          "reference": "123456789",
+          "hypothesis": "123456789"
+        },
+        {
+          "op": "hit",
+          "reference": "e",
+          "hypothesis": "e"
+        },
+        {
+          "op": "hit",
+          "reference": "de",
+          "hypothesis": "de"
+        },
+        {
+          "op": "hit",
+          "reference": "españa",
+          "hypothesis": "españa"
+        },
+        {
+          "op": "substitution",
+          "reference": "s",
+          "hypothesis": "es"
+        },
+        {
+          "op": "hit",
+          "reference": "de",
+          "hypothesis": "de"
+        },
+        {
+          "op": "hit",
+          "reference": "sevilla",
+          "hypothesis": "sevilla"
+        }
+      ]
+    },
+    "latency": {
+      "handshakeLatencyMs": 505,
+      "timeToFirstPartialMs": 2464,
+      "timeToFirstCommittedMs": 8359,
+      "lastPartialLatencyMs": 328,
+      "averagePartialLatencyMs": 90,
+      "lastCommittedLatencyMs": 421,
+      "totalSessionDurationMs": 8007,
+      "audioDurationStreamedSec": 8.021333333333349,
+      "chunksSent": 94,
+      "bytesSent": 64171,
+      "partialEventCount": 7,
+      "committedEventCount": 1
+    },
+    "signalMetrics": {
+      "rmsDbFs": -56.1,
+      "peakDbFs": -46,
+      "quantizationSnrDb": 26.67
+    },
+    "warnings": [],
+    "errors": []
+  },
+  {
+    "id": "run_1792515966654_as36v",
+    "createdAt": "2026-10-20T17:06:06.654Z",
+    "sourceType": "microphone",
+    "sourceName": "Micrófono",
+    "profileId": "ulaw_8000",
+    "profileName": "G.711 μ-law 8kHz",
+    "elevenLabsFormat": "ulaw_8000",
+    "inputSampleRate": 48000,
+    "outputSampleRate": 8000,
+    "commitStrategy": "vad",
+    "languageCode": "es",
+    "sessionId": "5815136bcca34e73bc52862c944f4840",
+    "finalTranscript": "RR987654321ES.",
+    "referenceTranscript": "RR987654321ES.",
+    "evaluationLabel": "correct",
+    "hasSavedAudio": true,
+    "accuracy": {
+      "wer": 0,
+      "cer": 0,
+      "wordAccuracy": 1,
+      "charAccuracy": 1,
+      "substitutions": 0,
+      "deletions": 0,
+      "insertions": 0,
+      "hits": 1,
+      "referenceWordCount": 1,
+      "hypothesisWordCount": 1,
+      "referenceCharCount": 13,
+      "hypothesisCharCount": 13,
+      "charSubstitutions": 0,
+      "charDeletions": 0,
+      "charInsertions": 0,
+      "charHits": 13,
+      "wordAlignment": [
+        {
+          "op": "hit",
+          "reference": "rr987654321es",
+          "hypothesis": "rr987654321es"
+        }
+      ]
+    },
+    "latency": {
+      "handshakeLatencyMs": 703,
+      "timeToFirstPartialMs": 2383,
+      "timeToFirstCommittedMs": 7561,
+      "lastPartialLatencyMs": 20,
+      "averagePartialLatencyMs": 34,
+      "lastCommittedLatencyMs": 397,
+      "totalSessionDurationMs": 7315,
+      "audioDurationStreamedSec": 7.253333333333345,
+      "chunksSent": 85,
+      "bytesSent": 58027,
+      "partialEventCount": 6,
+      "committedEventCount": 1
+    },
+    "signalMetrics": {
+      "rmsDbFs": -53,
+      "peakDbFs": -44.5,
+      "quantizationSnrDb": 28.59
+    },
+    "warnings": [],
+    "errors": []
+  }
+]
