@@ -3,6 +3,9 @@ import {
   Mic,
   Square,
   AlertCircle,
+  CheckCircle2,
+  Info,
+  X,
   Download,
   Trash2,
   HelpCircle,
@@ -32,6 +35,7 @@ import {
 } from '../shared/audio/profileProcessor.js';
 import {
   computeSignalLevels,
+  encodeMuLawToWav,
   encodePcm16ToWav,
 } from '../shared/audio/wavParser.js';
 import { calculateAccuracyMetrics } from '../shared/metrics/werCer.js';
@@ -71,6 +75,12 @@ interface HealthInfo {
   warnings: string[];
 }
 
+interface AppNotification {
+  id: string;
+  type: 'success' | 'warning' | 'error' | 'info';
+  message: string;
+}
+
 interface SavedAudioPlayerProps {
   runId: string;
   profileId: AudioProfileId;
@@ -86,37 +96,28 @@ const SavedAudioPlayerCell: React.FC<SavedAudioPlayerProps> = ({
   const [audioUrl, setAudioUrl] = useState<string | null>(
     hasSavedAudio ? serverAudioUrl : null
   );
-  const [wavBytes, setWavBytes] = useState<Uint8Array | null>(null);
+  const [fallbackWavBytes, setFallbackWavBytes] = useState<Uint8Array | null>(null);
 
   useEffect(() => {
-    let active = true;
-    let createdUrl: string | null = null;
-
     if (!hasSavedAudio) {
       setAudioUrl(null);
-      return undefined;
+      return;
     }
-
-    // Prefer server-persisted WAV in data/audio/<runId>.wav; fallback to IndexedDB if needed
     setAudioUrl(serverAudioUrl);
+    setFallbackWavBytes(null);
+  }, [runId, hasSavedAudio, serverAudioUrl]);
 
+  const handleAudioError = () => {
+    // Fallback to IndexedDB only if server file is not found
     void loadTestAudioFromDb(runId).then((record) => {
-      if (!active || !record) return;
-      setWavBytes(record.wavBytes);
+      if (!record) return;
+      setFallbackWavBytes(record.wavBytes);
       const copy = new Uint8Array(record.wavBytes.byteLength);
       copy.set(record.wavBytes);
       const blob = new Blob([copy.buffer], { type: 'audio/wav' });
-      createdUrl = URL.createObjectURL(blob);
-      setAudioUrl(createdUrl);
+      setAudioUrl(URL.createObjectURL(blob));
     });
-
-    return () => {
-      active = false;
-      if (createdUrl) {
-        URL.revokeObjectURL(createdUrl);
-      }
-    };
-  }, [runId, hasSavedAudio, serverAudioUrl]);
+  };
 
   if (!hasSavedAudio || !audioUrl) {
     return <span className="text-muted">Sin audio</span>;
@@ -124,8 +125,8 @@ const SavedAudioPlayerCell: React.FC<SavedAudioPlayerProps> = ({
 
   const handleDownload = () => {
     const filename = `audio-${profileId}-${runId.slice(-5)}.wav`;
-    if (wavBytes) {
-      triggerWavDownload(wavBytes, filename);
+    if (fallbackWavBytes) {
+      triggerWavDownload(fallbackWavBytes, filename);
       return;
     }
     const link = document.createElement('a');
@@ -138,7 +139,13 @@ const SavedAudioPlayerCell: React.FC<SavedAudioPlayerProps> = ({
 
   return (
     <div className="saved-audio-cell">
-      <audio controls src={audioUrl} className="audio-mini-player" preload="metadata" />
+      <audio
+        controls
+        src={audioUrl}
+        onError={handleAudioError}
+        className="audio-mini-player"
+        preload="metadata"
+      />
       <button
         className="btn btn-secondary btn-sm"
         onClick={handleDownload}
@@ -156,8 +163,29 @@ export const App: React.FC = () => {
   const [healthLoading, setHealthLoading] = useState<boolean>(false);
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
 
-  // Telephony Profile selection (Microphone only)
-  const [activeProfile, setActiveProfile] = useState<AudioProfileId>('original');
+  // Telephony Profile selection (Microphone only) — persisted in cookie
+  const [activeProfile, setActiveProfile] = useState<AudioProfileId>(() => {
+    try {
+      const match = document.cookie
+        .split('; ')
+        .find((row) => row.startsWith('scribe_active_profile='));
+      const saved = match ? decodeURIComponent(match.split('=')[1] ?? '') : null;
+      if (saved === 'original' || saved === 'pcm_8000' || saved === 'ulaw_8000') {
+        return saved;
+      }
+    } catch {
+      // ignore cookie errors
+    }
+    return 'ulaw_8000';
+  });
+
+  useEffect(() => {
+    try {
+      document.cookie = `scribe_active_profile=${encodeURIComponent(activeProfile)}; path=/; max-age=31536000; SameSite=Lax`;
+    } catch {
+      // ignore cookie errors
+    }
+  }, [activeProfile]);
 
   // Simplified Session Config
   const [commitStrategy, setCommitStrategy] = useState<CommitStrategy>('vad');
@@ -215,6 +243,9 @@ export const App: React.FC = () => {
   const [savedResults, setSavedResults] = useState<BenchmarkTestResult[]>(() =>
     loadSavedResults()
   );
+  const [isCurrentTestSaved, setIsCurrentTestSaved] = useState<boolean>(false);
+  const [isSavingTest, setIsSavingTest] = useState<boolean>(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   // Refs for real-time audio & WebSocket lifecycle
   const wsRef = useRef<WebSocket | null>(null);
@@ -223,7 +254,9 @@ export const App: React.FC = () => {
   const scriptNodeRef = useRef<ScriptProcessorNode | null>(null);
   const elapsedTimerRef = useRef<number | null>(null);
   const processedPcm16ChunksRef = useRef<Int16Array[]>([]);
+  const processedMuLawChunksRef = useRef<Uint8Array[]>([]);
   const sessionOutputSampleRateRef = useRef<number>(48000);
+  const currentTestSavedRef = useRef<boolean>(false);
 
   // Timing refs for accurate millisecond telemetry
   const connectInitiatedAtRef = useRef<number>(0);
@@ -231,6 +264,21 @@ export const App: React.FC = () => {
   const lastChunkSentAtRef = useRef<number | null>(null);
   const partialLatenciesRef = useRef<number[]>([]);
   const isStoppingRef = useRef<boolean>(false);
+
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  const notify = useCallback(
+    (type: AppNotification['type'], message: string) => {
+      const id = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      setNotifications((prev) => [...prev.slice(-4), { id, type, message }]);
+      window.setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== id));
+      }, 3800);
+    },
+    []
+  );
 
   // Fetch backend health status
   const checkBackendHealth = useCallback(async () => {
@@ -422,10 +470,35 @@ export const App: React.FC = () => {
     };
   }, [cleanupAudioResources]);
 
+  const isAlreadySaved = useMemo(() => {
+    if (isCurrentTestSaved) return true;
+    if (sessionId && savedResults.some((r) => r.sessionId === sessionId)) {
+      return true;
+    }
+    return false;
+  }, [isCurrentTestSaved, sessionId, savedResults]);
+
   // Save a completed or active test result (persisting to /data/benchmarks.json + /data/audio/<id>.wav as well as IndexedDB)
   const saveCurrentTestResult = useCallback(async () => {
+    if (isSavingTest || currentTestSavedRef.current || isAlreadySaved) {
+      notify(
+        'warning',
+        'Esta prueba ya ha sido guardada. Realiza una nueva grabación para guardar otra.'
+      );
+      return null;
+    }
+
     const transcriptToSave = fullTranscript.trim();
     const referenceToSave = realTranscript.trim() || transcriptToSave;
+
+    if (!transcriptToSave && !latestProcessedWavBytes) {
+      notify('warning', 'No hay audio ni transcripción para guardar.');
+      return null;
+    }
+
+    currentTestSavedRef.current = true;
+    setIsCurrentTestSaved(true);
+    setIsSavingTest(true);
 
     const accuracy =
       referenceToSave || transcriptToSave
@@ -498,16 +571,31 @@ export const App: React.FC = () => {
       errors,
     };
 
+    const werText = accuracy ? `${(accuracy.wer * 100).toFixed(1)}%` : '0.0%';
+
     try {
       const persisted = await persistBenchmarkToServer(newResult, wavBase64);
       setSavedResults((prev) => [persisted, ...prev.filter((r) => r.id !== persisted.id)]);
+      notify(
+        'success',
+        `Resultado guardado en data/ (${AUDIO_PROFILES[activeProfile].shortLabel} • WER: ${werText})`
+      );
       return persisted;
     } catch (err) {
       console.error('Failed to persist benchmark to /data on server:', err);
       setSavedResults((prev) => [newResult, ...prev]);
+      notify(
+        'warning',
+        `Resultado guardado localmente (${AUDIO_PROFILES[activeProfile].shortLabel} • WER: ${werText})`
+      );
       return newResult;
+    } finally {
+      setIsSavingTest(false);
     }
   }, [
+    isSavingTest,
+    isAlreadySaved,
+    notify,
     fullTranscript,
     realTranscript,
     activeProfile,
@@ -541,6 +629,7 @@ export const App: React.FC = () => {
     setSavedResults((prev) => prev.filter((item) => item.id !== runId));
     void deleteTestAudioFromDb(runId);
     void deleteBenchmarkFromServer(runId);
+    notify('info', 'Prueba eliminada correctamente.');
   };
 
   // Clear all saved runs + all audio in /data and IndexedDB
@@ -548,6 +637,7 @@ export const App: React.FC = () => {
     setSavedResults([]);
     void clearAllTestAudioFromDb();
     void clearBenchmarksOnServer();
+    notify('info', 'Se han eliminado todas las pruebas guardadas.');
   };
 
   // Send manual commit chunk
@@ -567,6 +657,7 @@ export const App: React.FC = () => {
       sample_rate: outputSampleRate,
     };
     ws.send(JSON.stringify(commitMsg));
+    notify('info', 'Commit manual enviado.');
   };
 
   // Stop streaming & build processed WAV for playback/saving
@@ -578,8 +669,25 @@ export const App: React.FC = () => {
 
     const targetRate = sessionOutputSampleRateRef.current;
 
-    // Combine processed PCM16 chunks at targetRate into a playable/downloadable WAV file
-    if (processedPcm16ChunksRef.current.length > 0) {
+    // Combine processed chunks at targetRate into a playable/downloadable mono WAV file
+    // For G.711 μ-law 8kHz, encode as true 8-bit mono ITU-T G.711 μ-law WAV (8000 Hz, 8-bit, 1 channel)
+    if (
+      activeProfile === 'ulaw_8000' &&
+      processedMuLawChunksRef.current.length > 0
+    ) {
+      const totalBytes = processedMuLawChunksRef.current.reduce(
+        (acc, chunk) => acc + chunk.length,
+        0
+      );
+      const combinedMuLaw = new Uint8Array(totalBytes);
+      let offset = 0;
+      for (const chunk of processedMuLawChunksRef.current) {
+        combinedMuLaw.set(chunk, offset);
+        offset += chunk.length;
+      }
+      const wavBytes = encodeMuLawToWav(combinedMuLaw, targetRate);
+      setLatestProcessedWavBytes(wavBytes);
+    } else if (processedPcm16ChunksRef.current.length > 0) {
       const totalSamples = processedPcm16ChunksRef.current.reduce(
         (acc, chunk) => acc + chunk.length,
         0
@@ -593,6 +701,8 @@ export const App: React.FC = () => {
       const wavBytes = encodePcm16ToWav(combinedPcm16, targetRate);
       setLatestProcessedWavBytes(wavBytes);
     }
+
+    notify('info', 'Grabación detenida. Revisa el texto y pulsa "Guardar Resultado".');
 
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -626,7 +736,7 @@ export const App: React.FC = () => {
       setConnectionStatus('disconnected');
       isStoppingRef.current = false;
     }
-  }, [cleanupAudioResources, activeProfile]);
+  }, [cleanupAudioResources, activeProfile, notify]);
 
   // Start Live Microphone Streaming Session
   const handleStartStream = async () => {
@@ -634,6 +744,9 @@ export const App: React.FC = () => {
 
     // Reset session telemetry & state
     isStoppingRef.current = false;
+    currentTestSavedRef.current = false;
+    setIsCurrentTestSaved(false);
+    setIsSavingTest(false);
     setErrors([]);
     setWarnings([]);
     setPartialTranscript('');
@@ -660,6 +773,7 @@ export const App: React.FC = () => {
     lastChunkSentAtRef.current = null;
     partialLatenciesRef.current = [];
     processedPcm16ChunksRef.current = [];
+    processedMuLawChunksRef.current = [];
 
     let audioCtx: AudioContext;
     let stream: MediaStream;
@@ -679,13 +793,18 @@ export const App: React.FC = () => {
       mediaStreamRef.current = stream;
       audioCtxRef.current = audioCtx;
     } catch (err) {
-      setErrors([
-        `No se pudo acceder al micrófono: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      ]);
+      const msg = `No se pudo acceder al micrófono: ${
+        err instanceof Error ? err.message : String(err)
+      }`;
+      setErrors([msg]);
+      notify('error', msg);
       return;
     }
+
+    notify(
+      'info',
+      `Grabación iniciada (${AUDIO_PROFILES[activeProfile].shortLabel})`
+    );
 
     const processor = new StreamingProfileProcessor(
       activeProfile,
@@ -888,6 +1007,9 @@ export const App: React.FC = () => {
 
       const processed = processor.processChunk(copy);
       processedPcm16ChunksRef.current.push(processed.previewPcm16);
+      if (processed.muLawBytes) {
+        processedMuLawChunksRef.current.push(processed.muLawBytes);
+      }
 
       const levels = computeSignalLevels(processed.previewPcm16);
       setRmsDbFs(levels.rmsDbFs);
@@ -983,6 +1105,31 @@ export const App: React.FC = () => {
           </button>
         </div>
       </header>
+
+      {/* Floating Toast Notifications */}
+      {notifications.length > 0 && (
+        <div className="toast-container" role="status" aria-live="polite">
+          {notifications.map((n) => (
+            <div key={n.id} className={`toast-item toast-${n.type}`}>
+              <span className="toast-icon">
+                {n.type === 'success' && <CheckCircle2 size={16} />}
+                {n.type === 'warning' && <AlertCircle size={16} />}
+                {n.type === 'error' && <AlertCircle size={16} />}
+                {n.type === 'info' && <Info size={16} />}
+              </span>
+              <span className="toast-message">{n.message}</span>
+              <button
+                type="button"
+                className="toast-close"
+                onClick={() => dismissNotification(n.id)}
+                aria-label="Cerrar notificación"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Warning banner if API key is missing */}
       {health && !health.apiKeyConfigured && (
@@ -1118,6 +1265,14 @@ export const App: React.FC = () => {
                   {inputSampleRate} Hz → {outputSampleRate} Hz
                 </code>{' '}
                 (<code>{resamplingRatio}x</code>)
+              </span>
+              <span>
+                Formato WAV:{' '}
+                <code>
+                  {activeProfile === 'ulaw_8000'
+                    ? '8-bit μ-law Mono'
+                    : '16-bit PCM Mono'}
+                </code>
               </span>
               <span>
                 Muestras:{' '}
@@ -1281,11 +1436,33 @@ export const App: React.FC = () => {
 
               <button
                 type="button"
-                className="btn btn-primary"
+                className={`btn ${isAlreadySaved ? 'btn-saved' : 'btn-primary'}`}
                 onClick={() => void saveCurrentTestResult()}
-                disabled={!fullTranscript && !latestProcessedWavBytes}
+                disabled={
+                  (!fullTranscript && !latestProcessedWavBytes) ||
+                  isStreaming ||
+                  isSavingTest ||
+                  isAlreadySaved
+                }
+                title={
+                  isAlreadySaved
+                    ? 'Esta prueba ya ha sido guardada. Inicia una nueva grabación para guardar otra.'
+                    : 'Guardar transcripción, audio y WER'
+                }
               >
-                <Save size={16} /> Guardar Resultado
+                {isAlreadySaved ? (
+                  <>
+                    <CheckCircle2 size={16} /> Resultado Guardado
+                  </>
+                ) : isSavingTest ? (
+                  <>
+                    <Save size={16} /> Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} /> Guardar Resultado
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -1305,14 +1482,20 @@ export const App: React.FC = () => {
           <div className="export-actions">
             <button
               className="btn btn-secondary btn-sm"
-              onClick={() => exportResultsToCsv(savedResults)}
+              onClick={() => {
+                exportResultsToCsv(savedResults);
+                notify('success', 'Resultados exportados a CSV.');
+              }}
               disabled={savedResults.length === 0}
             >
               <Download size={14} /> Export CSV
             </button>
             <button
               className="btn btn-secondary btn-sm"
-              onClick={() => exportResultsToJson(savedResults)}
+              onClick={() => {
+                exportResultsToJson(savedResults);
+                notify('success', 'Resultados exportados a JSON.');
+              }}
               disabled={savedResults.length === 0}
             >
               <Download size={14} /> Export JSON

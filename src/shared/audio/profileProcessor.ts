@@ -11,6 +11,7 @@ import {
 } from './resampler.js';
 import {
   computeSignalLevels,
+  encodeMuLawToWav,
   encodePcm16ToWav,
   pcm16ToLittleEndianBytes,
 } from './wavParser.js';
@@ -188,10 +189,9 @@ export function processBatchAudioForProfile(
     g711WireTransport
   );
   const chunkResult = processor.processChunk(monoInput);
-  const previewWavBytes = encodePcm16ToWav(
-    chunkResult.previewPcm16,
-    chunkResult.outputSampleRate
-  );
+  const previewWavBytes = chunkResult.muLawBytes
+    ? encodeMuLawToWav(chunkResult.muLawBytes, chunkResult.outputSampleRate)
+    : encodePcm16ToWav(chunkResult.previewPcm16, chunkResult.outputSampleRate);
   const levels = computeSignalLevels(chunkResult.previewPcm16);
   const durationSeconds =
     chunkResult.outputSampleRate > 0

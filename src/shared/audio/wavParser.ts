@@ -206,6 +206,43 @@ export function encodePcm16ToWav(pcm16: Int16Array, sampleRate: number): Uint8Ar
 }
 
 /**
+ * Encode mono 8-bit ITU-T G.711 μ-law samples into a standard WAV file (Format 7 = 0x0007, 8-bit, mono, 8000 Hz).
+ */
+export function encodeMuLawToWav(
+  muLawBytes: Uint8Array,
+  sampleRate: number = 8000
+): Uint8Array {
+  const numChannels = 1;
+  const bitsPerSample = 8;
+  const bytesPerSample = 1;
+  const byteRate = sampleRate * numChannels * bytesPerSample;
+  const blockAlign = numChannels * bytesPerSample;
+  const dataSize = muLawBytes.byteLength;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  writeAscii(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(view, 8, 'WAVE');
+
+  writeAscii(view, 12, 'fmt ');
+  view.setUint32(16, 16, true); // fmt chunk size
+  view.setUint16(20, 7, true); // Format 7 (0x0007) = ITU-T G.711 μ-law
+  view.setUint16(22, numChannels, true); // 1 channel (mono)
+  view.setUint32(24, sampleRate, true); // 8000 Hz
+  view.setUint32(28, byteRate, true); // 8000 bytes/sec (64 kbps)
+  view.setUint16(32, blockAlign, true); // 1 byte per frame
+  view.setUint16(34, bitsPerSample, true); // 8 bits per sample
+
+  writeAscii(view, 36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  const outBytes = new Uint8Array(buffer);
+  outBytes.set(muLawBytes, 44);
+  return outBytes;
+}
+
+/**
  * Helper to convert Int16Array into little-endian Uint8Array bytes for WebSocket streaming.
  */
 export function pcm16ToLittleEndianBytes(pcm16: Int16Array): Uint8Array {

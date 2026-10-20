@@ -87,6 +87,14 @@ describe('WAV Parser and Audio Profile Processing Pipeline', () => {
     expect(ulaw8kResult.muLawBytes?.byteLength).toBe(4000);
     expect(ulaw8kResult.quantizationSnrDb).toBeGreaterThan(30);
 
+    // Verify that the generated WAV file for ulaw_8000 is 8-bit, mono (1 channel), 8000 Hz ITU-T G.711 u-law (format code 7)
+    const parsedUlawWav = parseWavFile(ulaw8kResult.previewWavBytes);
+    expect(parsedUlawWav.sampleRate).toBe(8000);
+    expect(parsedUlawWav.numChannels).toBe(1);
+    expect(parsedUlawWav.bitsPerSample).toBe(8);
+    expect(parsedUlawWav.audioFormatCode).toBe(7);
+    expect(ulaw8kResult.previewWavBytes.byteLength).toBe(44 + 4000);
+
     // 4. G.711 u-law with pcm_8000_decoded transport sends the 16-bit reconstructed PCM after u-law quantization
     expect(ulawDecodedTransportResult.elevenLabsFormat).toBe('pcm_8000');
     expect(ulawDecodedTransportResult.wireBytes.byteLength).toBe(8000);
