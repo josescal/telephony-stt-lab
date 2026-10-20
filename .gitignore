@@ -1,0 +1,21 @@
+# Dependencies & Build Output
+node_modules/
+dist/
+coverage/
+
+# Environment & Secrets (keep .env.example)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.secret*
+secrets/
+
+# Logs & OS / Editor files
+*.log
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/
+.gemini/
