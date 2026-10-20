@@ -39,10 +39,10 @@ code, pre {
 .app-shell {
   max-width: 1480px;
   margin: 0 auto;
-  padding: 1rem 1.5rem 3rem;
+  padding: 0.75rem 1.25rem 2.5rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 0.75rem;
 }
 
 /* Top Header */
@@ -50,24 +50,24 @@ code, pre {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 1rem;
+  flex-wrap: nowrap;
+  gap: 0.75rem;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 0.9rem 1.25rem;
+  border-radius: 10px;
+  padding: 0.55rem 1rem;
 }
 
 .brand-block {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.65rem;
 }
 
 .brand-logo {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
   background: linear-gradient(135deg, var(--accent-indigo), var(--accent-cyan));
   display: flex;
   align-items: center;
@@ -77,21 +77,21 @@ code, pre {
 }
 
 .brand-block h1 {
-  font-size: 1.25rem;
+  font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
 .brand-subtitle {
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   color: var(--text-secondary);
 }
 
 .header-status-group {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  flex-wrap: nowrap;
+  gap: 0.55rem;
 }
 
 .api-status-pill {
@@ -197,12 +197,113 @@ code, pre {
   flex: 1;
 }
 
+/* Lightweight Horizontal Configuration Bar */
+.config-horizontal-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.6rem;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  padding: 0.35rem 0.75rem;
+  overflow-x: auto;
+}
+
+.config-bar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.config-bar-title {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.config-bar-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.config-bar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.config-profile-pills {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.config-profile-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.22rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.config-profile-btn:hover:not(:disabled) {
+  border-color: var(--border-highlight);
+  color: var(--text-primary);
+}
+
+.config-profile-btn.selected {
+  border-color: var(--accent-indigo);
+  background: rgba(99, 102, 241, 0.18);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.35);
+}
+
+.config-profile-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.config-profile-name {
+  white-space: nowrap;
+}
+
+.form-input.config-input-compact {
+  width: 54px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.form-select.config-select-compact {
+  width: auto;
+  min-width: 100px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.75rem;
+}
+
 /* Main Grid */
 .workbench-grid {
   display: grid;
-  grid-template-columns: 1fr 1.12fr;
+  grid-template-columns: minmax(260px, 1fr) 3fr;
   gap: 1.25rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 @media (max-width: 1080px) {
@@ -215,6 +316,11 @@ code, pre {
   display: flex;
   flex-direction: column;
   gap: 1.15rem;
+  min-width: 0;
+}
+
+.panel-column > .lab-card {
+  flex: 1;
 }
 
 .lab-card {
@@ -1721,4 +1827,252 @@ code, pre {
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* Compact Gladia Key Input in Horizontal Bar */
+.form-input.config-key-compact {
+  width: 110px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+}
 
+.btn-xs {
+  font-size: 0.72rem;
+  padding: 0.22rem 0.55rem;
+  border-radius: 6px;
+}
+
+/* Dual Providers Comparison Grid (ElevenLabs vs Gladia) */
+.dual-providers-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+@media (max-width: 760px) {
+  .dual-providers-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.provider-compare-card {
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 0.8rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.provider-compare-card.winner-glow {
+  border-color: rgba(16, 185, 129, 0.65);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.25), 0 6px 20px rgba(16, 185, 129, 0.08);
+}
+
+.provider-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.provider-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.provider-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.16rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.badge-elevenlabs {
+  background: rgba(99, 102, 241, 0.18);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+}
+
+.badge-gladia {
+  background: rgba(6, 182, 212, 0.18);
+  color: #67e8f9;
+  border: 1px solid rgba(6, 182, 212, 0.4);
+}
+
+.provider-model-code {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.provider-mini-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.71rem;
+  color: var(--text-secondary);
+}
+
+.provider-meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  background: rgba(15, 23, 42, 0.55);
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid rgba(51, 65, 85, 0.45);
+}
+
+.provider-transcript-box {
+  min-height: 95px;
+  max-height: 175px;
+  font-size: 0.88rem;
+  padding: 0.65rem 0.8rem;
+}
+
+.provider-wer-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.provider-diff-counts {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.73rem;
+  font-family: var(--font-mono);
+}
+
+/* Winner Pill Badges */
+.winner-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.winner-elevenlabs {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.45);
+}
+
+.winner-gladia {
+  background: rgba(6, 182, 212, 0.2);
+  color: #67e8f9;
+  border: 1px solid rgba(6, 182, 212, 0.45);
+}
+
+.winner-tie {
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+/* Dual KPI Box Values */
+.kpi-dual-values {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.kpi-provider-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.kpi-num-sm {
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+/* Simple Listening Indicator (replaces full oscilloscope) */
+.simple-listening-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.65);
+  transition: all 0.2s ease;
+}
+
+.simple-listening-card.active {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.08);
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.12);
+}
+
+.simple-listening-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.simple-listening-text {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.simple-level-meter {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 160px;
+  max-width: 280px;
+}
+
+.simple-level-track {
+  flex: 1;
+  height: 8px;
+  background: #1e293b;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+.simple-level-fill {
+  height: 100%;
+  background: #475569;
+  border-radius: 999px;
+  transition: width 0.08s ease-out;
+}
+
+.simple-level-fill.active {
+  background: linear-gradient(90deg, #10b981, #06b6d4);
+}
+
+.simple-level-db {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  min-width: 62px;
+  text-align: right;
+}

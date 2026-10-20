@@ -8,6 +8,10 @@ import {
   StreamingProfileProcessor,
 } from '../src/shared/audio/profileProcessor.js';
 import { float32ToPcm16 } from '../src/shared/audio/mulaw.js';
+import {
+  resolveGladiaAudioFormat,
+  buildGladiaLiveSessionPayload,
+} from '../src/shared/gladia/liveSession.js';
 
 describe('WAV Parser and Audio Profile Processing Pipeline', () => {
   it('encodes 16-bit PCM to WAV and parses it back losslessly', () => {
@@ -122,4 +126,52 @@ describe('WAV Parser and Audio Profile Processing Pipeline', () => {
     expect(processed.wireBytes.length).toBe(800);
     expect(processed.wireBase64.length).toBeGreaterThan(1000);
   });
+
+  it('maps audio profiles accurately to Gladia Live v2 parameters', () => {
+    const ulawFmt = resolveGladiaAudioFormat('ulaw_8000', 48000);
+    expect(ulawFmt).toEqual({
+      encoding: 'wav/ulaw',
+      bitDepth: 8,
+      sampleRate: 8000,
+      label: 'wav/ulaw 8000Hz (8-bit)',
+    });
+
+    const pcm8kFmt = resolveGladiaAudioFormat('pcm_8000', 48000);
+    expect(pcm8kFmt).toEqual({
+      encoding: 'wav/pcm',
+      bitDepth: 16,
+      sampleRate: 8000,
+      label: 'wav/pcm 8000Hz (16-bit)',
+    });
+
+    const origFmt = resolveGladiaAudioFormat('original', 48000);
+    expect(origFmt).toEqual({
+      encoding: 'wav/pcm',
+      bitDepth: 16,
+      sampleRate: 48000,
+      label: 'wav/pcm 48000Hz (16-bit)',
+    });
+
+    const payload = buildGladiaLiveSessionPayload({
+      profileId: 'ulaw_8000',
+      sampleRate: 8000,
+      languageCode: 'es',
+      endpointing: 0.3,
+    });
+
+    expect(payload.model).toBe('solaria-1');
+    expect(payload.encoding).toBe('wav/ulaw');
+    expect(payload.bit_depth).toBe(8);
+    expect(payload.sample_rate).toBe(8000);
+    expect(payload.language_config).toEqual({
+      languages: ['es'],
+      code_switching: false,
+    });
+    expect(payload.messages_config).toMatchObject({
+      receive_partial_transcripts: true,
+      receive_final_transcripts: true,
+      receive_speech_events: true,
+    });
+  });
 });
+

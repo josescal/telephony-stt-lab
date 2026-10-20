@@ -250,6 +250,22 @@ export interface LatencyMetrics {
 
 export type EvaluationLabel = 'correct' | 'incorrect' | null;
 
+export type GladiaEncoding = 'wav/pcm' | 'wav/ulaw' | 'wav/alaw';
+
+export interface GladiaProviderMetrics {
+  sessionId: string | null;
+  formatLabel: string; // e.g. 'wav/ulaw 8000Hz (8-bit)'
+  finalTranscript: string;
+  accuracy: AccuracyMetrics | null;
+  confidence: number | null; // 0..1 average utterance confidence from Gladia
+  handshakeLatencyMs: number | null;
+  timeToFirstPartialMs: number | null;
+  timeToFirstCommittedMs: number | null;
+  lastCommittedLatencyMs: number | null;
+  partialEventCount: number;
+  committedEventCount: number;
+}
+
 export interface BenchmarkTestResult {
   id: string;
   createdAt: string;
@@ -270,6 +286,8 @@ export interface BenchmarkTestResult {
   hasSavedAudio?: boolean;
   accuracy: AccuracyMetrics | null;
   latency: LatencyMetrics;
+  // Gladia Live v2 (solaria-1) simultaneous comparison data
+  gladia?: GladiaProviderMetrics | null;
   signalMetrics: {
     rmsDbFs: number;
     peakDbFs: number;
@@ -278,3 +296,4 @@ export interface BenchmarkTestResult {
   warnings: string[];
   errors: string[];
 }
+

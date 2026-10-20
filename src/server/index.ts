@@ -15,7 +15,12 @@ import {
   clearAllBenchmarksFromDisk,
   getAudioFilePath,
 } from './benchmarkStore.js';
-import type { BenchmarkTestResult } from '../shared/types.js';
+import type { AudioProfileId, BenchmarkTestResult } from '../shared/types.js';
+import {
+  buildGladiaLiveSessionPayload,
+  resolveGladiaAudioFormat,
+  type GladiaLiveInitRequest,
+} from '../shared/gladia/liveSession.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,9 +42,13 @@ export function createAppServer() {
         status: 'ok',
         service: 'telephony-stt-lab-proxy',
         modelId: 'scribe_v2_realtime',
+        gladiaModelId: 'solaria-1',
         apiKeyConfigured: env.isApiKeyConfigured,
         maskedApiKey: env.maskedApiKey,
+        gladiaApiKeyConfigured: env.isGladiaApiKeyConfigured,
+        maskedGladiaApiKey: env.maskedGladiaApiKey,
         upstreamEndpoint: env.elevenLabsWsUrl,
+        gladiaLiveUrl: env.gladiaLiveUrl,
         warnings: env.validationWarnings,
         dataDir: DATA_DIR,
         supportedFormats: [
@@ -59,6 +68,79 @@ export function createAppServer() {
       });
     }
   });
+
+  // Gladia Live v2 (solaria-1) Session Initialization Endpoint
+  app.post('/api/gladia/session', async (req, res) => {
+    try {
+      const env = getEnv();
+      const body = (req.body ?? {}) as Partial<GladiaLiveInitRequest>;
+      const resolvedKey = (env.gladiaApiKey ?? '').trim();
+
+      if (!resolvedKey) {
+        res.status(400).json({
+          error:
+            'Falta la API Key de Gladia. Configura GLADIA_API_KEY en tu archivo .env.',
+        });
+        return;
+      }
+
+      const profileId: AudioProfileId =
+        body.profileId === 'original' ||
+        body.profileId === 'pcm_8000' ||
+        body.profileId === 'ulaw_8000'
+          ? body.profileId
+          : 'ulaw_8000';
+      const sampleRate = Number(body.sampleRate) || 8000;
+      const languageCode =
+        typeof body.languageCode === 'string' ? body.languageCode : 'es';
+      const endpointing =
+        typeof body.endpointing === 'number' ? body.endpointing : 0.2;
+
+      const payload = buildGladiaLiveSessionPayload({
+        profileId,
+        sampleRate,
+        languageCode,
+        endpointing,
+      });
+      const gladiaFormat = resolveGladiaAudioFormat(profileId, sampleRate);
+
+      const upstreamRes = await fetch(env.gladiaLiveUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-gladia-key': resolvedKey,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responseText = await upstreamRes.text();
+      if (!upstreamRes.ok) {
+        res.status(upstreamRes.status).json({
+          error: `Gladia rechazó la sesión (${upstreamRes.status})`,
+          details: responseText,
+        });
+        return;
+      }
+
+      const sessionData = JSON.parse(responseText) as {
+        id: string;
+        url: string;
+        created_at?: string;
+      };
+      res.json({
+        ...sessionData,
+        gladiaFormat,
+      });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : 'No se pudo inicializar la sesión en vivo con Gladia',
+      });
+    }
+  });
+
 
   // Persistent Benchmark Results API (stored in /data/benchmarks.json and /data/audio/*.wav)
   app.get('/api/benchmarks', (_req, res) => {
@@ -154,14 +236,22 @@ if (isMainModule) {
 
     httpServer.listen(env.port, () => {
       console.log(`\n=============================================================`);
-      console.log(`  Telephony STT Lab — Secure Proxy Server`);
+      console.log(`  Telephony STT Lab — ElevenLabs Scribe v2 vs Gladia Solaria-1`);
       console.log(`  HTTP & WebSocket Proxy listening on: http://localhost:${env.port}`);
       console.log(`  Upstream Scribe v2 URL: ${env.elevenLabsWsUrl}`);
+      console.log(`  Upstream Gladia V2 URL: ${env.gladiaLiveUrl}`);
       console.log(
         `  ElevenLabs API Key: ${
           env.isApiKeyConfigured
             ? `Configured (${env.maskedApiKey})`
             : 'NOT CONFIGURED (set ELEVENLABS_API_KEY in .env)'
+        }`
+      );
+      console.log(
+        `  Gladia API Key:     ${
+          env.isGladiaApiKeyConfigured
+            ? `Configured (${env.maskedGladiaApiKey})`
+            : 'Not in .env (can be set in .env or top UI config bar)'
         }`
       );
       if (env.validationWarnings.length > 0) {

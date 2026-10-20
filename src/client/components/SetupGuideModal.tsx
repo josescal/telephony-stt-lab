@@ -6,6 +6,8 @@ interface SetupGuideModalProps {
   onClose: () => void;
   apiKeyConfigured: boolean;
   maskedApiKey: string | null;
+  gladiaApiKeyConfigured?: boolean;
+  maskedGladiaApiKey?: string | null;
   upstreamEndpoint: string;
 }
 
@@ -14,6 +16,8 @@ export const SetupGuideModal: React.FC<SetupGuideModalProps> = ({
   onClose,
   apiKeyConfigured,
   maskedApiKey,
+  gladiaApiKeyConfigured = false,
+  maskedGladiaApiKey = null,
   upstreamEndpoint,
 }) => {
   if (!isOpen) return null;
@@ -24,7 +28,7 @@ export const SetupGuideModal: React.FC<SetupGuideModalProps> = ({
         <div className="modal-header">
           <div className="modal-title-group">
             <Terminal size={20} className="icon-accent" />
-            <h2>Telephony STT Lab — Setup & Architecture Guide</h2>
+            <h2>Telephony STT Lab — Guía ElevenLabs vs Gladia</h2>
           </div>
           <button className="btn-icon" onClick={onClose} aria-label="Close setup guide">
             <X size={20} />
@@ -34,94 +38,84 @@ export const SetupGuideModal: React.FC<SetupGuideModalProps> = ({
         <div className="modal-body">
           <section className="guide-section">
             <h3>
-              <ShieldCheck size={17} /> 1. Environment & API Key Configuration
+              <ShieldCheck size={17} /> 1. Configuración de API Keys (ElevenLabs & Gladia)
             </h3>
             <p>
-              To protect your credentials, the browser never connects directly with your ElevenLabs
-              API key. Instead, the Node.js backend proxy attaches the{' '}
-              <code>xi-api-key</code> header server-side when opening the WebSocket to{' '}
-              <code>{upstreamEndpoint}</code>.
+              El mismo flujo de audio procesado del micrófono se envía simultáneamente a{' '}
+              <strong>ElevenLabs Scribe v2 Realtime</strong> (mediante el proxy WebSocket{' '}
+              <code>{upstreamEndpoint}</code>) y a <strong>Gladia Live v2 (Solaria-1)</strong>{' '}
+              (mediante sesión efímera inicializada en <code>/api/gladia/session</code>).
             </p>
-            <div className="status-callout">
-              <span>Current Backend Key Status: </span>
-              {apiKeyConfigured ? (
-                <strong className="text-success">
-                  Configured ({maskedApiKey})
-                </strong>
-              ) : (
-                <strong className="text-danger">
-                  Not Configured — Set ELEVENLABS_API_KEY in .env
-                </strong>
-              )}
+            <div className="status-callout" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <div>
+                <span>ElevenLabs Key (.env): </span>
+                {apiKeyConfigured ? (
+                  <strong className="text-success">
+                    Configurada ({maskedApiKey})
+                  </strong>
+                ) : (
+                  <strong className="text-danger">
+                    No configurada — Añade ELEVENLABS_API_KEY en .env
+                  </strong>
+                )}
+              </div>
+              <div>
+                <span>Gladia Key (.env): </span>
+                {gladiaApiKeyConfigured ? (
+                  <strong className="text-success">
+                    Configurada ({maskedGladiaApiKey})
+                  </strong>
+                ) : (
+                  <strong className="text-warning">
+                    No configurada — Añade GLADIA_API_KEY en .env
+                  </strong>
+                )}
+              </div>
             </div>
             <pre className="code-snippet">
-{`# 1. Copy the example environment file
+{`# 1. Copia el archivo de entorno de ejemplo
 cp .env.example .env
 
-# 2. Add your ElevenLabs API key in .env
-ELEVENLABS_API_KEY=your_actual_elevenlabs_api_key
+# 2. Añade tus claves de ElevenLabs y Gladia en .env
+ELEVENLABS_API_KEY=tu_api_key_elevenlabs
+GLADIA_API_KEY=tu_api_key_gladia
 PORT=3001
 
-# 3. Start both backend proxy and Vite frontend
+# 3. Inicia el servidor proxy y el frontend
 npm run dev`}
             </pre>
           </section>
 
           <section className="guide-section">
             <h3>
-              <Cpu size={17} /> 2. Authentic Telephony DSP Processing Pipeline
+              <Cpu size={17} /> 2. Pipeline DSP Telefónico Compartido (Mismo Audio Exacto)
             </h3>
             <p>
-              Unlike tools that only alter WAV header metadata, Telephony STT Lab performs genuine
-              digital signal processing on every audio chunk:
+              Cada bloque capturado del micrófono pasa una única vez por el motor DSP y se transmite en paralelo a ambos proveedores:
             </p>
             <ul className="guide-list">
               <li>
-                <strong>Original Audio (Wideband PCM 16-bit):</strong> Downmixes multi-channel
-                inputs to mono and encodes to 16-bit signed little-endian PCM at the closest
-                supported wideband sample rate (<code>pcm_16000</code> to <code>pcm_48000</code>),
-                preserving full frequency response.
+                <strong>Original (Wideband PCM 16-bit):</strong> Audio mono sin filtrar en 16-bit PCM (<code>pcm_16000</code>–<code>pcm_48000</code> en ElevenLabs y <code>wav/pcm 16-bit</code> en Gladia).
               </li>
               <li>
-                <strong>Telephone Band PCM (16-bit, 8000 Hz):</strong> Passes audio through a
-                cascaded 4th-order Butterworth IIR Bandpass Filter (<strong>300 Hz high-pass</strong>{' '}
-                + <strong>3400 Hz low-pass</strong>) to simulate PSTN subscriber-loop bandwidth,
-                applies anti-aliasing low-pass filtering, resamples to 8000 Hz, and streams as{' '}
-                <code>pcm_8000</code>.
+                <strong>PCM 16-bit 8kHz:</strong> Filtro paso banda telefónico Butterworth IIR de 4.º orden (<strong>300–3400 Hz</strong>), filtro anti-aliasing y diezmado a 8000 Hz en 16-bit PCM (<code>pcm_8000</code> en ElevenLabs y <code>wav/pcm 8000Hz 16-bit</code> en Gladia).
               </li>
               <li>
-                <strong>Simulated G.711 μ-law (8-bit, 8000 Hz):</strong> Applies the 300–3400 Hz
-                telephone-band filter and 8000 Hz resampling, then executes bit-level{' '}
-                <strong>ITU-T Recommendation G.711 μ-law (μ=255)</strong> logarithmic encoding (8-bit)
-                and decoding (16-bit reconstruction) to measure actual Signal-to-Quantization-Noise
-                Ratio (SQNR ~37 dB) and stream native <code>ulaw_8000</code> frames (or decoded{' '}
-                <code>pcm_8000</code> frames) to ElevenLabs.
+                <strong>G.711 μ-law 8kHz:</strong> Filtrado telefónico 300–3400 Hz, remuestreo a 8000 Hz y compresión logarítmica <strong>ITU-T G.711 μ-law (8-bit)</strong> enviada nativamente como <code>ulaw_8000</code> a ElevenLabs y <code>wav/ulaw 8000Hz 8-bit</code> a Gladia.
               </li>
             </ul>
           </section>
 
           <section className="guide-section">
             <h3>
-              <Radio size={17} /> 3. Official ElevenLabs Scribe v2 Realtime Protocol
+              <Radio size={17} /> 3. Comparativa de Precisión (WER) y Latencia
             </h3>
             <ul className="guide-list">
               <li>
-                <strong>Upstream Endpoint:</strong>{' '}
-                <code>wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=scribe_v2_realtime</code>
+                <strong>Transcripción Simultánea:</strong> Observa en tiempo real cómo transcriben ElevenLabs Scribe v2 y Gladia Solaria-1 exactamente la misma señal acústica.
               </li>
               <li>
-                <strong>Supported Audio Formats:</strong> <code>pcm_8000</code>,{' '}
-                <code>pcm_16000</code>, <code>pcm_22050</code>, <code>pcm_24000</code>,{' '}
-                <code>pcm_44100</code>, <code>pcm_48000</code>, and <code>ulaw_8000</code>.
-              </li>
-              <li>
-                <strong>Client Audio Frame:</strong>{' '}
-                <code>{`{ "message_type": "input_audio_chunk", "audio_base_64": "...", "commit": false, "sample_rate": 8000 }`}</code>
-              </li>
-              <li>
-                <strong>Server Events:</strong> <code>session_started</code>,{' '}
-                <code>partial_transcript</code>, <code>committed_transcript</code>,{' '}
-                <code>committed_transcript_with_timestamps</code>, and structured error events.
+                <strong>Texto Real (Ground Truth):</strong> Corrige cualquier palabra sobre el texto de referencia para obtener al instante el <strong>WER %</strong> comparativo de ambos modelos y determinar el ganador en cada perfil telefónico.
               </li>
             </ul>
           </section>
@@ -129,10 +123,11 @@ npm run dev`}
 
         <div className="modal-footer">
           <button className="btn btn-primary" onClick={onClose}>
-            Got It
+            Entendido
           </button>
         </div>
       </div>
     </div>
   );
 };
+

@@ -28,7 +28,11 @@ export function readBenchmarksFromDisk(): BenchmarkTestResult[] {
   try {
     const raw = fs.readFileSync(BENCHMARKS_FILE, 'utf8');
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as BenchmarkTestResult[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as BenchmarkTestResult[]).map((item) => ({
+      ...item,
+      hasSavedAudio: fs.existsSync(getAudioFilePath(item.id)),
+    }));
   } catch (err) {
     console.error('Error reading data/benchmarks.json:', err);
     return [];
@@ -55,11 +59,12 @@ export function saveBenchmarkToDisk(
 ): BenchmarkTestResult {
   ensureDataDirectories();
 
-  let hasSavedAudio = Boolean(result.hasSavedAudio);
+  const wavPath = getAudioFilePath(result.id);
+  let hasSavedAudio = fs.existsSync(wavPath);
+
   if (wavBase64 && wavBase64.length > 0) {
     const audioBuffer = Buffer.from(wavBase64, 'base64');
     if (audioBuffer.byteLength > 44) {
-      const wavPath = getAudioFilePath(result.id);
       fs.writeFileSync(wavPath, audioBuffer);
       hasSavedAudio = true;
     }
