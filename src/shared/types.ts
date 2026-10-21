@@ -231,6 +231,8 @@ export interface AccuracyMetrics {
   charInsertions: number;
   charHits: number;
   wordAlignment: AlignmentToken[];
+  normalizedReference?: string;
+  normalizedHypothesis?: string;
 }
 
 export interface LatencyMetrics {
@@ -266,6 +268,22 @@ export interface GladiaProviderMetrics {
   committedEventCount: number;
 }
 
+export interface GoogleProviderMetrics {
+  sessionId: string | null;
+  model: string;
+  location: string;
+  formatLabel: string; // e.g. 'MULAW 8000Hz (8-bit)'
+  finalTranscript: string;
+  accuracy: AccuracyMetrics | null;
+  confidence: number | null; // 0..1 average utterance confidence from Google STT v2
+  handshakeLatencyMs: number | null;
+  timeToFirstPartialMs: number | null;
+  timeToFirstCommittedMs: number | null;
+  lastCommittedLatencyMs: number | null;
+  partialEventCount: number;
+  committedEventCount: number;
+}
+
 export interface BenchmarkTestResult {
   id: string;
   createdAt: string;
@@ -288,6 +306,22 @@ export interface BenchmarkTestResult {
   latency: LatencyMetrics;
   // Gladia Live v2 (solaria-1) simultaneous comparison data
   gladia?: GladiaProviderMetrics | null;
+  // Google Cloud Speech-to-Text V2 (chirp_3) simultaneous comparison data
+  google?: GoogleProviderMetrics | null;
+  // Multi-engine extensible results (ElevenLabs, Gladia, Deepgram, etc.)
+  engines?: Record<string, {
+    engineId: string;
+    engineName: string;
+    model: string;
+    formatLabel: string;
+    transcript: string;
+    accuracy: AccuracyMetrics | null;
+    latency: LatencyMetrics;
+    confidence: number | null;
+    words?: TranscriptionWord[];
+    errors: string[];
+    warnings: string[];
+  }>;
   signalMetrics: {
     rmsDbFs: number;
     peakDbFs: number;
@@ -296,4 +330,16 @@ export interface BenchmarkTestResult {
   warnings: string[];
   errors: string[];
 }
+
+export type {
+  EngineId,
+  EngineMetadata,
+  EngineCapabilities,
+  EngineSessionConfig,
+  EngineCallbacks,
+  STTEngineAdapter,
+  SingleEngineResult,
+  BenchmarkRun,
+} from '../engines/base/types.js';
+
 

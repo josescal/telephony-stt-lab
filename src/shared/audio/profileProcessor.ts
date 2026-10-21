@@ -174,6 +174,85 @@ export class StreamingProfileProcessor {
 }
 
 /**
+ * Real-time automatic gain control (AGC) for live microphone streams.
+ * Prevents low-gain microphones (e.g., -45 dBFS to -50 dBFS on Linux/WebRTC)
+ * from being crushed by 8-bit G.711 μ-law quantization or ignored by Gladia VAD.
+ */
+export class StreamingMicrophoneAgc {
+  private envelopePeak = 0.06;
+  private currentGain = 1.0;
+  private readonly targetPeak: number;
+  private readonly maxGain: number;
+  private readonly speechGatePeak: number;
+
+  constructor(
+    targetPeak = 0.45,
+    maxGain = 12.0,
+    speechGatePeak = 0.008
+  ) {
+    this.targetPeak = targetPeak;
+    this.maxGain = maxGain;
+    this.speechGatePeak = speechGatePeak;
+  }
+
+  processChunk(input: Float32Array): Float32Array {
+    if (input.length === 0) return input;
+
+    let chunkPeak = 0;
+    let sumSq = 0;
+    for (let i = 0; i < input.length; i++) {
+      const sample = input[i]!;
+      const abs = Math.abs(sample);
+      if (abs > chunkPeak) chunkPeak = abs;
+      sumSq += sample * sample;
+    }
+    const chunkRms = Math.sqrt(sumSq / input.length);
+
+    // Only boost when active speech is detected above the room noise floor;
+    // during silence, decay gain back to 1.0 so background noise is not amplified
+    // (which otherwise causes Whisper/Solaria-1 to hallucinate "Gracias." at the end).
+    if (chunkPeak > this.speechGatePeak && chunkRms > 0.002) {
+      if (chunkPeak > this.envelopePeak) {
+        this.envelopePeak = this.envelopePeak * 0.4 + chunkPeak * 0.6;
+      } else {
+        this.envelopePeak = Math.max(
+          0.02,
+          this.envelopePeak * 0.95 + chunkPeak * 0.05
+        );
+      }
+
+      const desiredGain = Math.max(
+        1.0,
+        Math.min(this.maxGain, this.targetPeak / this.envelopePeak)
+      );
+      this.currentGain = this.currentGain * 0.6 + desiredGain * 0.4;
+    } else {
+      // Smoothly return to unity gain (1.0x) on silence/room noise
+      this.currentGain = Math.max(1.0, this.currentGain * 0.75);
+    }
+
+    const out = new Float32Array(input.length);
+    const gain = this.currentGain;
+    for (let i = 0; i < input.length; i++) {
+      const amplified = input[i]! * gain;
+      if (amplified > 0.85) {
+        out[i] = 0.85 + 0.14 * Math.tanh((amplified - 0.85) / 0.14);
+      } else if (amplified < -0.85) {
+        out[i] = -0.85 - 0.14 * Math.tanh((-amplified - 0.85) / 0.14);
+      } else {
+        out[i] = amplified;
+      }
+    }
+    return out;
+  }
+
+  reset(): void {
+    this.envelopePeak = 0.06;
+    this.currentGain = 1.0;
+  }
+}
+
+/**
  * Batch process an entire mono Float32 buffer through the selected audio profile.
  * Useful for WAV file uploads, preview playback generation, and unit testing.
  */

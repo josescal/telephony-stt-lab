@@ -101,6 +101,9 @@ export function attachSttWebSocketProxy(
 
   httpServer.on('upgrade', (request: IncomingMessage, socket, head) => {
     const reqUrl = new URL(request.url ?? '/', 'http://localhost');
+    if (reqUrl.pathname === '/api/ws/google') {
+      return;
+    }
     if (reqUrl.pathname !== '/api/ws/stt') {
       socket.destroy();
       return;

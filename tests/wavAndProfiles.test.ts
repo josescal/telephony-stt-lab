@@ -5,6 +5,7 @@ import {
 } from '../src/shared/audio/wavParser.js';
 import {
   processBatchAudioForProfile,
+  StreamingMicrophoneAgc,
   StreamingProfileProcessor,
 } from '../src/shared/audio/profileProcessor.js';
 import { float32ToPcm16 } from '../src/shared/audio/mulaw.js';
@@ -172,6 +173,24 @@ describe('WAV Parser and Audio Profile Processing Pipeline', () => {
       receive_final_transcripts: true,
       receive_speech_events: true,
     });
+  });
+
+  it('normalizes quiet microphone audio via StreamingMicrophoneAgc before G.711 u-law encoding', () => {
+    const agc = new StreamingMicrophoneAgc();
+    const processor = new StreamingProfileProcessor('ulaw_8000', 16000, 'ulaw_8000');
+
+    // Simulate a quiet microphone signal (~ -34 dBFS peak = 0.02 linear amplitude)
+    const quietChunk = new Float32Array(4096);
+    for (let i = 0; i < quietChunk.length; i++) {
+      quietChunk[i] = 0.02 * Math.sin((2 * Math.PI * 1000 * i) / 16000);
+    }
+
+    const rawProcessed = processor.processChunk(quietChunk);
+    processor.reset();
+    const agcProcessed = processor.processChunk(agc.processChunk(quietChunk));
+
+    // With AGC, G.711 u-law quantization SNR improves significantly and signal amplitude is boosted
+    expect(agcProcessed.quantizationSnrDb!).toBeGreaterThan(rawProcessed.quantizationSnrDb!);
   });
 });
 

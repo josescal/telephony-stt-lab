@@ -1,16 +1,17 @@
-# Telephony STT Lab — ElevenLabs Scribe v2 vs. Gladia Live v2 Benchmark
+# Telephony STT Lab — Multi-Engine STT Benchmark (ElevenLabs, Gladia & Extensible)
 
-**Telephony STT Lab** is a full-stack TypeScript, Node.js, React, and Vite benchmarking suite designed to evaluate and compare **ElevenLabs Scribe v2 Real-time** (`scribe_v2_realtime`) and **Gladia Live v2** (`solaria-1`) speech-to-text accuracy (**WER**) and latency side-by-side under authentic telephone-quality audio conditions.
+**Telephony STT Lab** is a modular TypeScript, Node.js, React, and Vite benchmarking laboratory designed to evaluate, compare, and benchmark multiple Speech-to-Text (**STT**) engines side-by-side (currently **ElevenLabs Scribe v2** and **Gladia Live v2**, with a pluggable adapter architecture to easily add **Deepgram**, **Whisper**, **AssemblyAI**, etc.) under authentic telephone-quality audio conditions (G.711 $\mu$-law, 8kHz PCM, and Wideband).
 
 ---
 
 ## Key Features
 
-1. **Simultaneous Dual-Engine Streaming (ElevenLabs vs. Gladia)**:
-   - Captures a single microphone stream, processes each audio chunk **once** through the active DSP telephony profile, and dispatches the **exact same processed audio bytes simultaneously** to:
-     - **ElevenLabs Scribe v2 Realtime (`scribe_v2_realtime`)** via `/api/ws/stt` (Base64 `input_audio_chunk`).
-     - **Gladia Live v2 (`solaria-1`)** via an ephemeral session initialized at `POST /api/gladia/session` (`https://api.gladia.io/v2/live?region=eu-west`) and binary WebSocket streaming.
-   - Pre-handshake chunk buffering ensures neither engine loses initial syllables while WebSockets are connecting.
+1. **Pluggable Multi-Engine STT Architecture**:
+   - Central registry and standard interface [`STTEngineAdapter`](src/engines/base/types.ts):
+     - **ElevenLabs Scribe v2 Realtime (`scribe_v2_realtime`)**: Full-duplex WebSocket streaming with timestamps and punctuation.
+     - **Gladia Live v2 (`solaria-1`)**: Multilingual low-latency streaming via ephemeral session tokens and binary audio chunks.
+   - **Engine Selector Bar**: Dynamic toggling to test individual engines or multiple engines simultaneously in parallel from a single microphone or audio stream.
+   - Server endpoint `GET /api/engines` for dynamic engine discovery, capabilities, and API key readiness.
 
 2. **Three Authentic Audio Processing Profiles**:
    - **G.711 μ-law 8kHz (`ulaw_8000`, default)**: Applies a cascaded 4th-order Butterworth **300–3400 Hz telephone bandpass filter** at the native input sample rate **before** anti-aliased resampling to **8000 Hz**, followed by authentic **ITU-T G.711 μ-law logarithmic 8-bit mono encoding** (`encodePcm16ToMuLaw`). Sent to ElevenLabs as `ulaw_8000` and to Gladia as `wav/ulaw` (`8-bit, 8000 Hz`). Saved `.wav` files are encoded as true **8-bit ITU-T G.711 μ-law (`WAVE_FORMAT_MULAW = 0x0007`), 8000 Hz, Mono, 64 kbps**.
@@ -103,9 +104,20 @@ Open **`http://localhost:5173`** in your browser.
 
 ```text
 ├── data/
-│   ├── benchmarks.json           # Persistent comparative benchmark runs (ElevenLabs + Gladia WER & latencies)
+│   ├── benchmarks.json           # Persistent comparative benchmark runs (WER, latencies & transcripts)
 │   └── audio/                    # Saved processed WAV files (8-bit μ-law mono / 16-bit PCM mono)
+├── tests/
+│   └── engines.test.ts           # Vitest tests for STT engine registry, instantiation & metadata
 └── src/
+    ├── engines/                  # Pluggable Multi-Engine STT Architecture
+    │   ├── base/
+    │   │   ├── types.ts          # Universal STTEngineAdapter interface, metadata, capabilities & session config
+    │   │   └── registry.ts       # Central engine registry (registerEngine, createEngineAdapter, getRegisteredEngines)
+    │   ├── elevenlabs/
+    │   │   └── adapter.ts        # ElevenLabs Scribe v2 realtime adapter implementation
+    │   ├── gladia/
+    │   │   └── adapter.ts        # Gladia Live v2 (solaria-1) adapter implementation
+    │   └── index.ts              # Registry bootstrap auto-registering default engines
     ├── shared/
     │   ├── types.ts              # Shared types, Scribe v2 & Gladia metrics, benchmark models
     │   ├── gladia/
@@ -122,13 +134,86 @@ Open **`http://localhost:5173`** in your browser.
     │   ├── env.ts                # Zod environment variable validation & API key masking
     │   ├── wsProxy.ts            # Secure WebSocket proxy (/api/ws/stt -> ElevenLabs Scribe v2)
     │   ├── benchmarkStore.ts     # Persistent disk storage for benchmarks.json & data/audio/*.wav
-    │   └── index.ts              # Express HTTP server, /api/gladia/session endpoint & static hosting
+    │   └── index.ts              # Express server: /api/engines, /api/gladia/session & static hosting
     └── client/
-        ├── App.tsx               # Main UI: dual ElevenLabs/Gladia streaming, side-by-side WER & benchmark table
-        ├── styles.css            # Responsive dark UI theme, dual comparison cards & toast notifications
+        ├── App.tsx               # Main UI: multi-engine streaming, side-by-side WER & benchmark table
+        ├── styles.css            # Responsive dark UI theme & engine selector chip styles
         ├── components/
         │   ├── WaveformMeter.tsx # Real-time canvas oscilloscope & dBFS level meter
-        │   └── SetupGuideModal.tsx # Interactive setup & dual-engine DSP pipeline documentation modal
+        │   ├── SetupGuideModal.tsx # Interactive setup & dual-engine DSP pipeline documentation modal
+        │   └── engines/
+        │       └── EngineSelectorBar.tsx # Dynamic chip selector to toggle active STT engines
         └── services/
             └── storageAndExport.ts # Backend API sync, comparative CSV/JSON export & WAV download helpers
 ```
+
+---
+
+## How to Add a New STT Engine (e.g., Deepgram, Whisper, AssemblyAI)
+
+Adding a new Speech-to-Text engine to the lab requires 3 simple steps:
+
+### 1. Implement the `STTEngineAdapter` interface
+
+Create `src/engines/<engine-name>/adapter.ts`:
+
+```typescript
+import {
+  STTEngineAdapter,
+  EngineMetadata,
+  EngineCapabilities,
+  EngineSessionConfig,
+  EngineCallbacks,
+} from '../base/types.js';
+
+export const MY_ENGINE_METADATA: EngineMetadata = {
+  id: 'my_engine',
+  name: 'My STT Engine',
+  vendor: 'MyCompany',
+  description: 'Real-time low-latency speech recognition',
+  website: 'https://example.com',
+  docsUrl: 'https://example.com/docs',
+};
+
+export const MY_ENGINE_CAPABILITIES: EngineCapabilities = {
+  supportedProfiles: ['ulaw_8000', 'pcm_8000', 'original'],
+  supportsInterimResults: true,
+  supportsTimestamps: true,
+  requiresProxy: false,
+};
+
+export class MyEngineAdapter implements STTEngineAdapter {
+  readonly metadata = MY_ENGINE_METADATA;
+  readonly capabilities = MY_ENGINE_CAPABILITIES;
+
+  async connect(config: EngineSessionConfig, callbacks: EngineCallbacks): Promise<void> {
+    // 1. Establish WebSocket / HTTP streaming connection
+    // 2. Invoke callbacks.onInterimResult({ transcript, latencyMs }) on partials
+    // 3. Invoke callbacks.onFinalResult({ transcript, latencyMs }) on commits
+  }
+
+  sendAudio(chunk: ArrayBuffer | Uint8Array): void {
+    // Transmit audio chunk to the engine
+  }
+
+  async disconnect(): Promise<void> {
+    // Close connection and clean up resources
+  }
+}
+```
+
+### 2. Register the engine in `src/engines/index.ts`
+
+```typescript
+import { registerEngine } from './base/registry.js';
+import { MyEngineAdapter, MY_ENGINE_METADATA } from './my_engine/adapter.js';
+
+// Register your engine factory
+registerEngine(MY_ENGINE_METADATA, () => new MyEngineAdapter());
+```
+
+### 3. (Optional) Backend credentials & Discovery
+
+- Add any required API keys to `.env.example`, `.env`, and `src/server/env.ts`.
+- If an ephemeral token or proxy is needed (like ElevenLabs or Gladia), register the proxy or session route in `src/server/index.ts`.
+- The engine will automatically be discovered by the server (`GET /api/engines`) and appear dynamically in the UI's **Engine Selector Bar**!

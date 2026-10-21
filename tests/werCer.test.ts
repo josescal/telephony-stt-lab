@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   calculateAccuracyMetrics,
+  normalizeSpanishAlphanumericText,
   normalizeTranscriptText,
 } from '../src/shared/metrics/werCer.js';
 import { buildUpstreamElevenLabsUrl } from '../src/server/wsProxy.js';
@@ -64,6 +65,37 @@ describe('WER and CER Accuracy Metrics Calculator', () => {
 
   it('normalizes whitespace and punctuation properly', () => {
     expect(normalizeTranscriptText('  Hello,   WORLD!!  123 ')).toBe('hello world 123');
+  });
+
+  it('normalizes Spanish spoken numbers, letter names, punctuation, and grouped codes identically', () => {
+    // Spoken words vs digits + letter codes
+    const spoken = 'uno, dos, tres, cuatro, be, ce, efe.';
+    const groupedPlate = '1234-BCF';
+    const spaced = '1 2 3 4 B C F';
+
+    expect(normalizeSpanishAlphanumericText(spoken)).toBe('1 2 3 4 b c f');
+    expect(normalizeSpanishAlphanumericText(groupedPlate)).toBe('1 2 3 4 b c f');
+    expect(normalizeSpanishAlphanumericText(spaced)).toBe('1 2 3 4 b c f');
+
+    const metrics = calculateAccuracyMetrics(spaced, spoken, {
+      normalizeAlphanumeric: true,
+    });
+    expect(metrics.wer).toBe(0);
+    expect(metrics.cer).toBe(0);
+
+    const metricsGrouped = calculateAccuracyMetrics(spaced, groupedPlate, {
+      normalizeAlphanumeric: true,
+    });
+    expect(metricsGrouped.wer).toBe(0);
+  });
+
+  it('normalizes compound Spanish numbers and multi-word letter names ("doble uve", "treinta y cuatro", "mil doscientos")', () => {
+    expect(
+      normalizeSpanishAlphanumericText('veintitrés treinta y cuatro doble uve equis zeta')
+    ).toBe('2 3 3 4 w x z');
+    expect(
+      normalizeSpanishAlphanumericText('mil doscientos treinta y cuatro jota')
+    ).toBe('1 2 3 4 j');
   });
 });
 

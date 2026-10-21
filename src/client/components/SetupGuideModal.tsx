@@ -8,6 +8,8 @@ interface SetupGuideModalProps {
   maskedApiKey: string | null;
   gladiaApiKeyConfigured?: boolean;
   maskedGladiaApiKey?: string | null;
+  googleConfigured?: boolean;
+  maskedGoogleKey?: string | null;
   upstreamEndpoint: string;
 }
 
@@ -18,6 +20,8 @@ export const SetupGuideModal: React.FC<SetupGuideModalProps> = ({
   maskedApiKey,
   gladiaApiKeyConfigured = false,
   maskedGladiaApiKey = null,
+  googleConfigured = false,
+  maskedGoogleKey = null,
   upstreamEndpoint,
 }) => {
   if (!isOpen) return null;
@@ -28,7 +32,7 @@ export const SetupGuideModal: React.FC<SetupGuideModalProps> = ({
         <div className="modal-header">
           <div className="modal-title-group">
             <Terminal size={20} className="icon-accent" />
-            <h2>Telephony STT Lab — Guía ElevenLabs vs Gladia</h2>
+            <h2>Telephony STT Lab — Guía ElevenLabs vs Gladia vs Google Chirp 3</h2>
           </div>
           <button className="btn-icon" onClick={onClose} aria-label="Close setup guide">
             <X size={20} />
@@ -38,13 +42,13 @@ export const SetupGuideModal: React.FC<SetupGuideModalProps> = ({
         <div className="modal-body">
           <section className="guide-section">
             <h3>
-              <ShieldCheck size={17} /> 1. Configuración de API Keys (ElevenLabs & Gladia)
+              <ShieldCheck size={17} /> 1. Configuración de Credenciales (.env)
             </h3>
             <p>
               El mismo flujo de audio procesado del micrófono se envía simultáneamente a{' '}
-              <strong>ElevenLabs Scribe v2 Realtime</strong> (mediante el proxy WebSocket{' '}
-              <code>{upstreamEndpoint}</code>) y a <strong>Gladia Live v2 (Solaria-1)</strong>{' '}
-              (mediante sesión efímera inicializada en <code>/api/gladia/session</code>).
+              <strong>ElevenLabs Scribe v2 Realtime</strong> (<code>{upstreamEndpoint}</code>), a{' '}
+              <strong>Gladia Live v2 (Solaria-1)</strong> (<code>/api/gladia/session</code>) y a{' '}
+              <strong>Google Cloud Speech-to-Text V2 (Chirp 3)</strong> (<code>/api/ws/google</code>).
             </p>
             <div className="status-callout" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               <div>
@@ -71,18 +75,31 @@ export const SetupGuideModal: React.FC<SetupGuideModalProps> = ({
                   </strong>
                 )}
               </div>
+              <div>
+                <span>Google Cloud STT v2 (.env): </span>
+                {googleConfigured ? (
+                  <strong className="text-success">
+                    Configurado ({maskedGoogleKey})
+                  </strong>
+                ) : (
+                  <strong className="text-warning">
+                    No configurado — Añade GOOGLE_CREDENTIALS_JSON en .env
+                  </strong>
+                )}
+              </div>
             </div>
             <pre className="code-snippet">
 {`# 1. Copia el archivo de entorno de ejemplo
 cp .env.example .env
 
-# 2. Añade tus claves de ElevenLabs y Gladia en .env
+# 2. Añade tus credenciales en .env
 ELEVENLABS_API_KEY=tu_api_key_elevenlabs
 GLADIA_API_KEY=tu_api_key_gladia
-PORT=3001
-
-# 3. Inicia el servidor proxy y el frontend
-npm run dev`}
+GOOGLE_CREDENTIALS_JSON={"type":"service_account","project_id":"tu-proyecto","private_key":"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n","client_email":"..."}
+GOOGLE_CLOUD_PROJECT=tu-proyecto
+GOOGLE_STT_LOCATION=eu
+GOOGLE_STT_MODEL=chirp_3
+PORT=3001`}
             </pre>
           </section>
 

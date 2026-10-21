@@ -27,11 +27,13 @@ import {
   type CommitStrategy,
   type ConnectionStatus,
   type GladiaProviderMetrics,
+  type GoogleProviderMetrics,
   type InputAudioChunkMessage,
   type ProxyEnvelopedEvent,
   type TranscriptionWord,
 } from '../shared/types.js';
 import {
+  StreamingMicrophoneAgc,
   StreamingProfileProcessor,
   uint8ArrayToBase64,
 } from '../shared/audio/profileProcessor.js';
@@ -43,12 +45,19 @@ import {
 } from '../shared/audio/wavParser.js';
 import { decodeMuLawToPcm16, float32ToPcm16 } from '../shared/audio/mulaw.js';
 import { StreamingResampler } from '../shared/audio/resampler.js';
-import { calculateAccuracyMetrics } from '../shared/metrics/werCer.js';
+import {
+  calculateAccuracyMetrics,
+  normalizeSpanishAlphanumericText,
+} from '../shared/metrics/werCer.js';
 import {
   resolveGladiaAudioFormat,
   type GladiaLiveEvent,
   type GladiaLiveInitResponse,
 } from '../shared/gladia/liveSession.js';
+import {
+  resolveGoogleAudioFormat,
+  type GoogleProxyServerMessage,
+} from '../shared/google/liveSession.js';
 import {
   clearBenchmarksOnServer,
   deleteBenchmarkFromServer,
@@ -67,6 +76,12 @@ import {
   triggerWavDownload,
 } from './services/audioStorage.js';
 import { SetupGuideModal } from './components/SetupGuideModal.js';
+import {
+  getRegisteredEngines,
+  type EngineId,
+} from '../engines/index.js';
+import { EngineSelectorBar } from './components/engines/EngineSelectorBar.js';
+
 
 /**
  * Creates a browser-playable WAV Blob URL from raw WAV bytes.
@@ -112,6 +127,10 @@ interface HealthInfo {
   maskedApiKey: string | null;
   gladiaApiKeyConfigured?: boolean;
   maskedGladiaApiKey?: string | null;
+  googleConfigured?: boolean;
+  maskedGoogleKey?: string | null;
+  googleModelId?: string;
+  googleLocation?: string;
   upstreamEndpoint: string;
   gladiaLiveUrl?: string;
   warnings: string[];
@@ -289,6 +308,24 @@ export const App: React.FC = () => {
     useState<Uint8Array | null>(null);
   const [previewAudioUrl, setPreviewAudioUrl] = useState<string | null>(null);
 
+  // Multi-engine registered list & user selection
+  const registeredEngines = useMemo(() => getRegisteredEngines(), []);
+  const [selectedEngineIds, setSelectedEngineIds] = useState<EngineId[]>([
+    'elevenlabs',
+    'gladia',
+    'google',
+  ]);
+
+  const handleToggleEngine = useCallback((id: EngineId) => {
+    setSelectedEngineIds((prev) => {
+      if (prev.includes(id)) {
+        if (prev.length <= 1) return prev; // Keep at least one engine active
+        return prev.filter((e) => e !== id);
+      }
+      return [...prev, id];
+    });
+  }, []);
+
   // ElevenLabs Live Streaming & Connection state
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>('disconnected');
@@ -303,6 +340,14 @@ export const App: React.FC = () => {
     resolveGladiaAudioFormat(activeProfile, 8000).label
   );
 
+  // Google STT v2 (Chirp 3) Live Streaming & Connection state
+  const [googleStatus, setGoogleStatus] =
+    useState<ConnectionStatus>('disconnected');
+  const [googleSessionId, setGoogleSessionId] = useState<string | null>(null);
+  const [googleFormatLabel, setGoogleFormatLabel] = useState<string>(
+    resolveGoogleAudioFormat(activeProfile, 8000).label
+  );
+
   // ElevenLabs Transcripts
   const [partialTranscript, setPartialTranscript] = useState<string>('');
   const [committedSegments, setCommittedSegments] = useState<CommittedSegment[]>([]);
@@ -313,10 +358,18 @@ export const App: React.FC = () => {
     CommittedSegment[]
   >([]);
 
+  // Google STT v2 Transcripts
+  const [googlePartialTranscript, setGooglePartialTranscript] = useState<string>('');
+  const [googleCommittedSegments, setGoogleCommittedSegments] = useState<
+    CommittedSegment[]
+  >([]);
+
   // Shared Ground-Truth Correction (Texto Real)
   const [realTranscript, setRealTranscript] = useState<string>('');
   const [isRealTranscriptEdited, setIsRealTranscriptEdited] =
     useState<boolean>(false);
+  const [normalizeAlphanumeric, setNormalizeAlphanumeric] =
+    useState<boolean>(true);
   const [errors, setErrors] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
 
@@ -364,6 +417,23 @@ export const App: React.FC = () => {
   const [gladiaCommittedEventCount, setGladiaCommittedEventCount] =
     useState<number>(0);
 
+  // Google STT v2 Latency & Counters
+  const [googleHandshakeLatencyMs, setGoogleHandshakeLatencyMs] = useState<
+    number | null
+  >(null);
+  const [googleTimeToFirstPartialMs, setGoogleTimeToFirstPartialMs] = useState<
+    number | null
+  >(null);
+  const [googleTimeToFirstCommittedMs, setGoogleTimeToFirstCommittedMs] = useState<
+    number | null
+  >(null);
+  const [googleLastCommittedLatencyMs, setGoogleLastCommittedLatencyMs] = useState<
+    number | null
+  >(null);
+  const [googlePartialEventCount, setGooglePartialEventCount] = useState<number>(0);
+  const [googleCommittedEventCount, setGoogleCommittedEventCount] =
+    useState<number>(0);
+
   // Saved Benchmark Results
   const [savedResults, setSavedResults] = useState<BenchmarkTestResult[]>(() =>
     loadSavedResults()
@@ -372,11 +442,13 @@ export const App: React.FC = () => {
   const [isSavingTest, setIsSavingTest] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
-  // Refs for real-time audio & Dual WebSocket lifecycle
+  // Refs for real-time audio & Triple WebSocket lifecycle
   const wsRef = useRef<WebSocket | null>(null);
   const gladiaWsRef = useRef<WebSocket | null>(null);
+  const googleWsRef = useRef<WebSocket | null>(null);
   const elPendingChunksRef = useRef<string[]>([]);
   const gladiaPendingBinaryRef = useRef<ArrayBuffer[]>([]);
+  const googlePendingBinaryRef = useRef<ArrayBuffer[]>([]);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scriptNodeRef = useRef<ScriptProcessorNode | null>(null);
@@ -391,9 +463,11 @@ export const App: React.FC = () => {
   // Timing refs for accurate millisecond telemetry
   const connectInitiatedAtRef = useRef<number>(0);
   const gladiaConnectInitiatedAtRef = useRef<number>(0);
+  const googleConnectInitiatedAtRef = useRef<number>(0);
   const firstChunkSentAtRef = useRef<number | null>(null);
   const lastChunkSentAtRef = useRef<number | null>(null);
   const gladiaSpeechEndedAtRef = useRef<number | null>(null);
+  const googleSpeechEndedAtRef = useRef<number | null>(null);
   const partialLatenciesRef = useRef<number[]>([]);
   const isStoppingRef = useRef<boolean>(false);
 
@@ -623,47 +697,112 @@ export const App: React.FC = () => {
     return sum / withConf.length;
   }, [gladiaCommittedSegments]);
 
-  // Keep Texto Real initially populated with ElevenLabs (or Gladia) transcript until user edits it
+  // Combined Google STT v2 transcript text
+  const googleFullTranscript = useMemo(() => {
+    const trimmedSegments = googleCommittedSegments
+      .map((s) => s.text.trim())
+      .filter((t) => t.length > 0);
+    const committedText = trimmedSegments.join(' ');
+    const partial = googlePartialTranscript.trim();
+    const lastCommitted = trimmedSegments[trimmedSegments.length - 1] ?? '';
+
+    if (
+      partial &&
+      lastCommitted &&
+      partial.toLowerCase() === lastCommitted.toLowerCase()
+    ) {
+      return committedText;
+    }
+
+    if (committedText && partial) {
+      return `${committedText} ${partial}`;
+    }
+    return committedText || partial;
+  }, [googleCommittedSegments, googlePartialTranscript]);
+
+  // Average Google confidence across final utterances
+  const googleAvgConfidence = useMemo(() => {
+    const withConf = googleCommittedSegments.filter(
+      (s) => typeof s.confidence === 'number'
+    );
+    if (withConf.length === 0) return null;
+    const sum = withConf.reduce((acc, s) => acc + (s.confidence ?? 0), 0);
+    return sum / withConf.length;
+  }, [googleCommittedSegments]);
+
+  // Keep Texto Real initially populated with ElevenLabs (or Gladia or Google) transcript until user edits it
   useEffect(() => {
     if (!isRealTranscriptEdited) {
       if (fullTranscript.trim()) {
         setRealTranscript(fullTranscript);
       } else if (gladiaFullTranscript.trim()) {
         setRealTranscript(gladiaFullTranscript);
+      } else if (googleFullTranscript.trim()) {
+        setRealTranscript(googleFullTranscript);
       } else {
         setRealTranscript('');
       }
     }
-  }, [fullTranscript, gladiaFullTranscript, isRealTranscriptEdited]);
+  }, [
+    fullTranscript,
+    gladiaFullTranscript,
+    googleFullTranscript,
+    isRealTranscriptEdited,
+  ]);
 
   // Live WER calculation for ElevenLabs vs Texto Real
   const liveElevenLabsAccuracy = useMemo(() => {
     if (!realTranscript.trim() && !fullTranscript.trim()) return null;
-    return calculateAccuracyMetrics(realTranscript, fullTranscript);
-  }, [realTranscript, fullTranscript]);
+    return calculateAccuracyMetrics(realTranscript, fullTranscript, {
+      normalizeAlphanumeric,
+    });
+  }, [realTranscript, fullTranscript, normalizeAlphanumeric]);
 
   // Live WER calculation for Gladia vs Texto Real
   const liveGladiaAccuracy = useMemo(() => {
     if (!realTranscript.trim() && !gladiaFullTranscript.trim()) return null;
-    return calculateAccuracyMetrics(realTranscript, gladiaFullTranscript);
-  }, [realTranscript, gladiaFullTranscript]);
+    return calculateAccuracyMetrics(realTranscript, gladiaFullTranscript, {
+      normalizeAlphanumeric,
+    });
+  }, [realTranscript, gladiaFullTranscript, normalizeAlphanumeric]);
 
-  // Determine live winner between ElevenLabs and Gladia
-  const liveWinner = useMemo(() => {
-    const hasEl = Boolean(fullTranscript.trim());
-    const hasGl = Boolean(gladiaFullTranscript.trim());
-    if (!hasEl && !hasGl) return null;
-    if (hasEl && !hasGl && liveElevenLabsAccuracy) return 'elevenlabs';
-    if (!hasEl && hasGl && liveGladiaAccuracy) return 'gladia';
-    if (!liveElevenLabsAccuracy || !liveGladiaAccuracy) return null;
-    const diff = liveElevenLabsAccuracy.wer - liveGladiaAccuracy.wer;
-    if (Math.abs(diff) < 1e-6) return 'tie';
-    return diff < 0 ? 'elevenlabs' : 'gladia';
+  // Live WER calculation for Google STT v2 vs Texto Real
+  const liveGoogleAccuracy = useMemo(() => {
+    if (!realTranscript.trim() && !googleFullTranscript.trim()) return null;
+    return calculateAccuracyMetrics(realTranscript, googleFullTranscript, {
+      normalizeAlphanumeric,
+    });
+  }, [realTranscript, googleFullTranscript, normalizeAlphanumeric]);
+
+  // Determine live winner across active engines (ElevenLabs, Gladia, Google STT v2)
+  const liveWinner = useMemo((): 'elevenlabs' | 'gladia' | 'google' | 'tie' | null => {
+    const candidates: Array<{
+      id: 'elevenlabs' | 'gladia' | 'google';
+      wer: number;
+    }> = [];
+    if (fullTranscript.trim() && liveElevenLabsAccuracy) {
+      candidates.push({ id: 'elevenlabs', wer: liveElevenLabsAccuracy.wer });
+    }
+    if (gladiaFullTranscript.trim() && liveGladiaAccuracy) {
+      candidates.push({ id: 'gladia', wer: liveGladiaAccuracy.wer });
+    }
+    if (googleFullTranscript.trim() && liveGoogleAccuracy) {
+      candidates.push({ id: 'google', wer: liveGoogleAccuracy.wer });
+    }
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return candidates[0]!.id;
+
+    const minWer = Math.min(...candidates.map((c) => c.wer));
+    const best = candidates.filter((c) => Math.abs(c.wer - minWer) < 1e-6);
+    if (best.length > 1) return 'tie';
+    return best[0]!.id;
   }, [
     fullTranscript,
     gladiaFullTranscript,
+    googleFullTranscript,
     liveElevenLabsAccuracy,
     liveGladiaAccuracy,
+    liveGoogleAccuracy,
   ]);
 
   // Comparative WER Summary across all saved tests (global and per telephony profile)
@@ -671,6 +810,9 @@ export const App: React.FC = () => {
     const elRuns = savedResults.filter((r) => r.accuracy !== null);
     const glRuns = savedResults.filter(
       (r) => r.gladia?.accuracy !== null && r.gladia?.accuracy !== undefined
+    );
+    const goRuns = savedResults.filter(
+      (r) => r.google?.accuracy !== null && r.google?.accuracy !== undefined
     );
 
     const globalElAvgWer =
@@ -687,15 +829,35 @@ export const App: React.FC = () => {
           100
         : null;
 
+    const globalGoAvgWer =
+      goRuns.length > 0
+        ? (goRuns.reduce((acc, r) => acc + (r.google?.accuracy?.wer ?? 0), 0) /
+            goRuns.length) *
+          100
+        : null;
+
     let elWins = 0;
     let glWins = 0;
+    let goWins = 0;
     let ties = 0;
     for (const r of savedResults) {
-      if (r.accuracy && r.gladia?.accuracy) {
-        const diff = r.accuracy.wer - r.gladia.accuracy.wer;
-        if (Math.abs(diff) < 1e-6) ties++;
-        else if (diff < 0) elWins++;
-        else glWins++;
+      const candidates: Array<{ id: 'el' | 'gl' | 'go'; wer: number }> = [];
+      if (r.accuracy && (r.finalTranscript || r.sessionId)) {
+        candidates.push({ id: 'el', wer: r.accuracy.wer });
+      }
+      if (r.gladia?.accuracy && (r.gladia.finalTranscript || r.gladia.sessionId)) {
+        candidates.push({ id: 'gl', wer: r.gladia.accuracy.wer });
+      }
+      if (r.google?.accuracy && (r.google.finalTranscript || r.google.sessionId)) {
+        candidates.push({ id: 'go', wer: r.google.accuracy.wer });
+      }
+      if (candidates.length >= 2) {
+        const minWer = Math.min(...candidates.map((c) => c.wer));
+        const best = candidates.filter((c) => Math.abs(c.wer - minWer) < 1e-6);
+        if (best.length > 1) ties++;
+        else if (best[0]!.id === 'el') elWins++;
+        else if (best[0]!.id === 'gl') glWins++;
+        else if (best[0]!.id === 'go') goWins++;
       }
     }
 
@@ -705,6 +867,9 @@ export const App: React.FC = () => {
         const runsWithElWer = runs.filter((r) => r.accuracy !== null);
         const runsWithGlWer = runs.filter(
           (r) => r.gladia?.accuracy !== null && r.gladia?.accuracy !== undefined
+        );
+        const runsWithGoWer = runs.filter(
+          (r) => r.google?.accuracy !== null && r.google?.accuracy !== undefined
         );
         const avgElWer =
           runsWithElWer.length > 0
@@ -721,12 +886,22 @@ export const App: React.FC = () => {
                 runsWithGlWer.length) *
               100
             : null;
+        const avgGoWer =
+          runsWithGoWer.length > 0
+            ? (runsWithGoWer.reduce(
+                (acc, r) => acc + (r.google?.accuracy?.wer ?? 0),
+                0
+              ) /
+                runsWithGoWer.length) *
+              100
+            : null;
         return {
           profileId: pid,
           label: AUDIO_PROFILES[pid].shortLabel,
           count: runs.length,
           avgElWer,
           avgGlWer,
+          avgGoWer,
         };
       }
     );
@@ -735,8 +910,10 @@ export const App: React.FC = () => {
       totalRuns: savedResults.length,
       globalElAvgWer,
       globalGlAvgWer,
+      globalGoAvgWer,
       elWins,
       glWins,
+      goWins,
       ties,
       byProfile,
     };
@@ -772,6 +949,9 @@ export const App: React.FC = () => {
       if (gladiaWsRef.current) {
         gladiaWsRef.current.close();
       }
+      if (googleWsRef.current) {
+        googleWsRef.current.close();
+      }
     };
   }, [cleanupAudioResources]);
 
@@ -786,10 +966,16 @@ export const App: React.FC = () => {
     ) {
       return true;
     }
+    if (
+      googleSessionId &&
+      savedResults.some((r) => r.google?.sessionId === googleSessionId)
+    ) {
+      return true;
+    }
     return false;
-  }, [isCurrentTestSaved, sessionId, gladiaSessionId, savedResults]);
+  }, [isCurrentTestSaved, sessionId, gladiaSessionId, googleSessionId, savedResults]);
 
-  // Save a completed test result (ElevenLabs + Gladia comparison + recorded WAV)
+  // Save a completed test result (ElevenLabs + Gladia + Google STT v2 comparison + recorded WAV)
   const saveCurrentTestResult = useCallback(async () => {
     if (isSavingTest || currentTestSavedRef.current || isAlreadySaved) {
       notify(
@@ -806,10 +992,19 @@ export const App: React.FC = () => {
 
     const elTranscriptToSave = fullTranscript.trim();
     const glTranscriptToSave = gladiaFullTranscript.trim();
+    const goTranscriptToSave = googleFullTranscript.trim();
     const referenceToSave =
-      realTranscript.trim() || elTranscriptToSave || glTranscriptToSave;
+      realTranscript.trim() ||
+      elTranscriptToSave ||
+      glTranscriptToSave ||
+      goTranscriptToSave;
 
-    if (!elTranscriptToSave && !glTranscriptToSave && !wavBytesToSave) {
+    if (
+      !elTranscriptToSave &&
+      !glTranscriptToSave &&
+      !goTranscriptToSave &&
+      !wavBytesToSave
+    ) {
       notify('warning', 'No hay audio ni transcripción para guardar.');
       return null;
     }
@@ -820,12 +1015,23 @@ export const App: React.FC = () => {
 
     const elAccuracy =
       referenceToSave || elTranscriptToSave
-        ? calculateAccuracyMetrics(referenceToSave, elTranscriptToSave)
+        ? calculateAccuracyMetrics(referenceToSave, elTranscriptToSave, {
+            normalizeAlphanumeric,
+          })
         : null;
 
     const glAccuracy =
       glTranscriptToSave || gladiaSessionId
-        ? calculateAccuracyMetrics(referenceToSave, glTranscriptToSave)
+        ? calculateAccuracyMetrics(referenceToSave, glTranscriptToSave, {
+            normalizeAlphanumeric,
+          })
+        : null;
+
+    const goAccuracy =
+      goTranscriptToSave || googleSessionId
+        ? calculateAccuracyMetrics(referenceToSave, goTranscriptToSave, {
+            normalizeAlphanumeric,
+          })
         : null;
 
     const profileUsed = sessionProfileRef.current || activeProfile;
@@ -852,6 +1058,27 @@ export const App: React.FC = () => {
             lastCommittedLatencyMs: gladiaLastCommittedLatencyMs,
             partialEventCount: gladiaPartialEventCount,
             committedEventCount: gladiaCommittedEventCount,
+          }
+        : null;
+
+    const googleMetrics: GoogleProviderMetrics | null =
+      goTranscriptToSave || googleSessionId
+        ? {
+            sessionId: googleSessionId,
+            model: health?.googleModelId ?? 'chirp_3',
+            location: health?.googleLocation ?? 'eu',
+            formatLabel:
+              googleFormatLabel ||
+              resolveGoogleAudioFormat(profileUsed, outputSampleRate).label,
+            finalTranscript: goTranscriptToSave,
+            accuracy: goAccuracy,
+            confidence: googleAvgConfidence,
+            handshakeLatencyMs: googleHandshakeLatencyMs,
+            timeToFirstPartialMs: googleTimeToFirstPartialMs,
+            timeToFirstCommittedMs: googleTimeToFirstCommittedMs,
+            lastCommittedLatencyMs: googleLastCommittedLatencyMs,
+            partialEventCount: googlePartialEventCount,
+            committedEventCount: googleCommittedEventCount,
           }
         : null;
 
@@ -912,6 +1139,7 @@ export const App: React.FC = () => {
         committedEventCount,
       },
       gladia: gladiaMetrics,
+      google: googleMetrics,
       signalMetrics: {
         rmsDbFs,
         peakDbFs,
@@ -923,6 +1151,7 @@ export const App: React.FC = () => {
 
     const elWerText = elAccuracy ? `${(elAccuracy.wer * 100).toFixed(1)}%` : '—';
     const glWerText = glAccuracy ? `${(glAccuracy.wer * 100).toFixed(1)}%` : '—';
+    const goWerText = goAccuracy ? `${(goAccuracy.wer * 100).toFixed(1)}%` : '—';
 
     try {
       const persisted = await persistBenchmarkToServer(newResult, wavBase64);
@@ -932,7 +1161,7 @@ export const App: React.FC = () => {
       ]);
       notify(
         'success',
-        `Comparativa y audio guardados (${AUDIO_PROFILES[profileUsed].shortLabel} • ElevenLabs WER: ${elWerText} vs Gladia WER: ${glWerText})`
+        `Comparativa guardada (${AUDIO_PROFILES[profileUsed].shortLabel} • EL: ${elWerText} | GL: ${glWerText} | Google: ${goWerText})`
       );
       return persisted;
     } catch (err) {
@@ -940,7 +1169,7 @@ export const App: React.FC = () => {
       setSavedResults((prev) => [newResult, ...prev]);
       notify(
         'warning',
-        `Guardado localmente (${AUDIO_PROFILES[profileUsed].shortLabel} • EL: ${elWerText} vs GL: ${glWerText})`
+        `Guardado localmente (${AUDIO_PROFILES[profileUsed].shortLabel} • EL: ${elWerText} | GL: ${glWerText} | Google: ${goWerText})`
       );
       return newResult;
     } finally {
@@ -954,8 +1183,10 @@ export const App: React.FC = () => {
     latestProcessedWavBytes,
     fullTranscript,
     gladiaFullTranscript,
+    googleFullTranscript,
     realTranscript,
     gladiaSessionId,
+    googleSessionId,
     activeProfile,
     outputSampleRate,
     gladiaFormatLabel,
@@ -966,6 +1197,15 @@ export const App: React.FC = () => {
     gladiaLastCommittedLatencyMs,
     gladiaPartialEventCount,
     gladiaCommittedEventCount,
+    googleFormatLabel,
+    googleAvgConfidence,
+    googleHandshakeLatencyMs,
+    googleTimeToFirstPartialMs,
+    googleTimeToFirstCommittedMs,
+    googleLastCommittedLatencyMs,
+    googlePartialEventCount,
+    googleCommittedEventCount,
+    health,
     inputSampleRate,
     commitStrategy,
     languageCode,
@@ -1042,6 +1282,7 @@ export const App: React.FC = () => {
 
     const ws = wsRef.current;
     const gladiaWs = gladiaWsRef.current;
+    const googleWs = googleWsRef.current;
 
     if (ws && ws.readyState === WebSocket.OPEN) {
       setConnectionStatus('committing');
@@ -1076,6 +1317,17 @@ export const App: React.FC = () => {
       setGladiaStatus((prev) => (prev === 'error' ? 'error' : 'disconnected'));
     }
 
+    if (googleWs && googleWs.readyState === WebSocket.OPEN) {
+      setGoogleStatus('committing');
+      try {
+        googleWs.send(JSON.stringify({ type: 'stop_recording' }));
+      } catch {
+        // Ignore send errors on closing socket
+      }
+    } else {
+      setGoogleStatus((prev) => (prev === 'error' ? 'error' : 'disconnected'));
+    }
+
     window.setTimeout(() => {
       if (wsRef.current === ws && ws) {
         try {
@@ -1085,6 +1337,22 @@ export const App: React.FC = () => {
         }
         wsRef.current = null;
       }
+      setConnectionStatus((prev) => (prev === 'error' ? 'error' : 'disconnected'));
+    }, 1250);
+
+    window.setTimeout(() => {
+      if (googleWsRef.current === googleWs && googleWs) {
+        try {
+          googleWs.close(1000, 'Session completed');
+        } catch {
+          // ignore
+        }
+        googleWsRef.current = null;
+      }
+      setGoogleStatus((prev) => (prev === 'error' ? 'error' : 'disconnected'));
+    }, 2200);
+
+    window.setTimeout(() => {
       if (gladiaWsRef.current === gladiaWs && gladiaWs) {
         try {
           gladiaWs.close(1000, 'Session completed');
@@ -1093,13 +1361,12 @@ export const App: React.FC = () => {
         }
         gladiaWsRef.current = null;
       }
-      setConnectionStatus((prev) => (prev === 'error' ? 'error' : 'disconnected'));
       setGladiaStatus((prev) => (prev === 'error' ? 'error' : 'disconnected'));
       isStoppingRef.current = false;
-    }, 1250);
+    }, 3200);
   }, [cleanupAudioResources, buildRecordedWavBytes, notify]);
 
-  // Start Simultaneous Live Microphone Streaming Session (ElevenLabs + Gladia)
+  // Start Simultaneous Live Microphone Streaming Session (ElevenLabs + Gladia + Google STT v2)
   const handleStartStream = async () => {
     if (isStreaming) return;
 
@@ -1110,6 +1377,7 @@ export const App: React.FC = () => {
     latestProcessedWavBytesRef.current = null;
     elPendingChunksRef.current = [];
     gladiaPendingBinaryRef.current = [];
+    googlePendingBinaryRef.current = [];
 
     setIsCurrentTestSaved(false);
     setIsSavingTest(false);
@@ -1119,10 +1387,13 @@ export const App: React.FC = () => {
     setCommittedSegments([]);
     setGladiaPartialTranscript('');
     setGladiaCommittedSegments([]);
+    setGooglePartialTranscript('');
+    setGoogleCommittedSegments([]);
     setRealTranscript('');
     setIsRealTranscriptEdited(false);
     setSessionId(null);
     setGladiaSessionId(null);
+    setGoogleSessionId(null);
     setElapsedMs(0);
 
     setHandshakeLatencyMs(null);
@@ -1144,12 +1415,20 @@ export const App: React.FC = () => {
     setGladiaPartialEventCount(0);
     setGladiaCommittedEventCount(0);
 
+    setGoogleHandshakeLatencyMs(null);
+    setGoogleTimeToFirstPartialMs(null);
+    setGoogleTimeToFirstCommittedMs(null);
+    setGoogleLastCommittedLatencyMs(null);
+    setGooglePartialEventCount(0);
+    setGoogleCommittedEventCount(0);
+
     setTotalInputSamples(0);
     setTotalOutputSamples(0);
     setLatestProcessedWavBytes(null);
     firstChunkSentAtRef.current = null;
     lastChunkSentAtRef.current = null;
     gladiaSpeechEndedAtRef.current = null;
+    googleSpeechEndedAtRef.current = null;
     partialLatenciesRef.current = [];
     processedPcm16ChunksRef.current = [];
     processedMuLawChunksRef.current = [];
@@ -1164,7 +1443,7 @@ export const App: React.FC = () => {
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: false,
-          autoGainControl: false,
+          autoGainControl: true,
         },
       });
       audioCtx = new AudioContext();
@@ -1185,6 +1464,7 @@ export const App: React.FC = () => {
       sourceSampleRate,
       'ulaw_8000'
     );
+    const micAgc = new StreamingMicrophoneAgc();
 
     sessionOutputSampleRateRef.current = processor.outputSampleRate;
     setInputSampleRate(processor.inputSampleRate);
@@ -1195,6 +1475,12 @@ export const App: React.FC = () => {
       processor.outputSampleRate
     );
     setGladiaFormatLabel(gladiaFormat.label);
+
+    const googleFormat = resolveGoogleAudioFormat(
+      activeProfile,
+      processor.outputSampleRate
+    );
+    setGoogleFormatLabel(googleFormat.label);
 
     // Optional resampler only if 'original' profile resolved to 22050/24000 Hz (which Gladia maps to 16000 Hz)
     const gladiaNeedsResample =
@@ -1210,41 +1496,48 @@ export const App: React.FC = () => {
       setElapsedMs(Math.round(performance.now() - startedAt));
     }, 100);
 
+    const isElActive = selectedEngineIds.includes('elevenlabs');
+    const isGlActive = selectedEngineIds.includes('gladia');
+    const isGoActive = selectedEngineIds.includes('google');
+
     notify(
       'info',
-      `Grabación simultánea iniciada: ElevenLabs + Gladia (${AUDIO_PROFILES[activeProfile].shortLabel})`
+      `Grabación iniciada: ${selectedEngineIds.join(' + ')} (${AUDIO_PROFILES[activeProfile].shortLabel})`
     );
 
     // 1. Connect to ElevenLabs Scribe v2 Realtime via local WebSocket proxy (/api/ws/stt)
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = new URL(`${wsProtocol}//${window.location.host}/api/ws/stt`);
-    wsUrl.searchParams.set('audio_format', processor.elevenLabsFormat);
-    wsUrl.searchParams.set('commit_strategy', commitStrategy);
-    wsUrl.searchParams.set('include_timestamps', 'true');
+    let ws: WebSocket | null = null;
+    if (isElActive) {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = new URL(`${wsProtocol}//${window.location.host}/api/ws/stt`);
+      wsUrl.searchParams.set('audio_format', processor.elevenLabsFormat);
+      wsUrl.searchParams.set('commit_strategy', commitStrategy);
+      wsUrl.searchParams.set('include_timestamps', 'true');
 
-    if (languageCode.trim()) {
-      wsUrl.searchParams.set('language_code', languageCode.trim());
-    }
-
-    setConnectionStatus('connecting');
-    connectInitiatedAtRef.current = performance.now();
-
-    const ws = new WebSocket(wsUrl.toString());
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setConnectionStatus('connected');
-      if (elPendingChunksRef.current.length > 0) {
-        for (const payloadStr of elPendingChunksRef.current) {
-          try {
-            ws.send(payloadStr);
-          } catch {
-            // ignore
-          }
-        }
-        elPendingChunksRef.current = [];
+      if (languageCode.trim()) {
+        wsUrl.searchParams.set('language_code', languageCode.trim());
       }
-    };
+
+      setConnectionStatus('connecting');
+      connectInitiatedAtRef.current = performance.now();
+
+      ws = new WebSocket(wsUrl.toString());
+      wsRef.current = ws;
+
+      const activeWs = ws;
+      ws.onopen = () => {
+        setConnectionStatus('connected');
+        if (elPendingChunksRef.current.length > 0) {
+          for (const payloadStr of elPendingChunksRef.current) {
+            try {
+              activeWs?.send(payloadStr);
+            } catch {
+              // ignore
+            }
+          }
+          elPendingChunksRef.current = [];
+        }
+      };
 
     ws.onmessage = (event) => {
       const nowPerf = performance.now();
@@ -1396,12 +1689,16 @@ export const App: React.FC = () => {
         setConnectionStatus((prev) => (prev === 'error' ? 'error' : 'disconnected'));
       }
     };
+  } else {
+    setConnectionStatus('disconnected');
+  }
 
-    // 2. Initialize & Connect Gladia Live v2 (solaria-1) in parallel
-    setGladiaStatus('connecting');
-    gladiaConnectInitiatedAtRef.current = performance.now();
+  // 2. Initialize & Connect Gladia Live v2 (solaria-1) in parallel
+    if (isGlActive) {
+      setGladiaStatus('connecting');
+      gladiaConnectInitiatedAtRef.current = performance.now();
 
-    void (async () => {
+      void (async () => {
       try {
         const initRes = await fetch('/api/gladia/session', {
           method: 'POST',
@@ -1409,7 +1706,7 @@ export const App: React.FC = () => {
           body: JSON.stringify({
             profileId: activeProfile,
             sampleRate: processor.outputSampleRate,
-            languageCode: languageCode.trim() || 'es',
+            languageCode: languageCode.trim() || 'auto',
             endpointing: 0.2,
           }),
         });
@@ -1451,6 +1748,9 @@ export const App: React.FC = () => {
             );
             // Flush any initial audio chunks captured during session POST + WS handshake
             if (gladiaPendingBinaryRef.current.length > 0) {
+              console.log(
+                `[Gladia] Conexión abierta. Vaciando ${gladiaPendingBinaryRef.current.length} fragmentos pendientes.`
+              );
               for (const buf of gladiaPendingBinaryRef.current) {
                 try {
                   gSocket.send(buf);
@@ -1532,6 +1832,53 @@ export const App: React.FC = () => {
                 return;
               }
 
+              if (message.type === 'post_transcript' && message.data?.utterances) {
+                const utterances = message.data.utterances;
+                if (Array.isArray(utterances) && utterances.length > 0) {
+                  setGladiaPartialTranscript('');
+                  setGladiaCommittedSegments((prev) => {
+                    if (prev.length > 0) return prev;
+                    const newSegments: CommittedSegment[] = utterances
+                      .map((utt, i) => ({
+                        id: `post_${utt.start}_${utt.end}_${i}`,
+                        text: (utt.text ?? '').trim(),
+                        languageCode: utt.language,
+                        confidence: utt.confidence,
+                        timestampMs: Math.round((utt.end ?? 0) * 1000),
+                      }))
+                      .filter((s) => s.text.length > 0);
+                    return newSegments.length > 0 ? newSegments : prev;
+                  });
+                  setGladiaCommittedEventCount((c) => Math.max(c, utterances.length));
+                }
+                return;
+              }
+
+              if (
+                message.type === 'post_final_transcript' &&
+                message.data?.transcription?.utterances
+              ) {
+                const utterances = message.data.transcription.utterances;
+                if (Array.isArray(utterances) && utterances.length > 0) {
+                  setGladiaPartialTranscript('');
+                  setGladiaCommittedSegments((prev) => {
+                    if (prev.length > 0) return prev;
+                    const newSegments: CommittedSegment[] = utterances
+                      .map((utt, i) => ({
+                        id: `post_final_${utt.start}_${utt.end}_${i}`,
+                        text: (utt.text ?? '').trim(),
+                        languageCode: utt.language,
+                        confidence: utt.confidence,
+                        timestampMs: Math.round((utt.end ?? 0) * 1000),
+                      }))
+                      .filter((s) => s.text.length > 0);
+                    return newSegments.length > 0 ? newSegments : prev;
+                  });
+                  setGladiaCommittedEventCount((c) => Math.max(c, utterances.length));
+                }
+                return;
+              }
+
               if (message.error) {
                 const errText =
                   typeof message.error === 'string'
@@ -1545,7 +1892,8 @@ export const App: React.FC = () => {
             }
           };
 
-          gSocket.onerror = () => {
+          gSocket.onerror = (evt) => {
+            console.error('[Gladia] Error en WebSocket en vivo:', evt);
             setErrors((prev) => [
               ...prev,
               '[Gladia] Error en la conexión WebSocket en vivo.',
@@ -1553,10 +1901,19 @@ export const App: React.FC = () => {
             setGladiaStatus('error');
           };
 
-          gSocket.onclose = () => {
+          gSocket.onclose = (evt) => {
+            console.log('[Gladia] WebSocket cerrado:', evt.code, evt.reason);
             if (!isStoppingRef.current) {
+              if (evt.code !== 1000 && evt.code !== 1005) {
+                setErrors((prev) => [
+                  ...prev,
+                  `[Gladia] Conexión cerrada inesperadamente (código ${evt.code}: ${
+                    evt.reason || 'sin detalle'
+                  }).`,
+                ]);
+              }
               setGladiaStatus((prev) =>
-                prev === 'error' ? 'error' : 'disconnected'
+                prev === 'error' || evt.code !== 1000 ? 'error' : 'disconnected'
               );
             }
           };
@@ -1569,8 +1926,152 @@ export const App: React.FC = () => {
           setGladiaStatus('error');
         }
       })();
+    } else {
+      gladiaWsRef.current = null;
+      setGladiaStatus('disconnected');
+    }
 
-    // 3. Real-time Microphone Capture -> DSP Profile Processor -> Simultaneous dispatch to ElevenLabs & Gladia
+    // 3. Initialize & Connect Google Cloud Speech-to-Text v2 (chirp_3) via local WebSocket proxy (/api/ws/google)
+    if (isGoActive) {
+      setGoogleStatus('connecting');
+      googleConnectInitiatedAtRef.current = performance.now();
+
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const goWsUrl = new URL(`${wsProtocol}//${window.location.host}/api/ws/google`);
+      goWsUrl.searchParams.set('profile_id', activeProfile);
+      goWsUrl.searchParams.set('sample_rate', String(processor.outputSampleRate));
+      goWsUrl.searchParams.set('language_code', languageCode.trim() || 'es-ES');
+
+      const goSocket = new WebSocket(goWsUrl.toString());
+      goSocket.binaryType = 'arraybuffer';
+      googleWsRef.current = goSocket;
+
+      goSocket.onopen = () => {
+        setGoogleStatus('connected');
+        if (googlePendingBinaryRef.current.length > 0) {
+          for (const buf of googlePendingBinaryRef.current) {
+            try {
+              goSocket.send(buf);
+            } catch {
+              // ignore
+            }
+          }
+          googlePendingBinaryRef.current = [];
+        }
+      };
+
+      goSocket.onmessage = (goEvent) => {
+        if (typeof goEvent.data !== 'string') return;
+        const nowPerf = performance.now();
+        try {
+          const msg = JSON.parse(goEvent.data) as GoogleProxyServerMessage;
+
+          if (msg.type === 'session_started') {
+            setGoogleSessionId(msg.sessionId);
+            setGoogleStatus('session_active');
+            setGoogleHandshakeLatencyMs(
+              Math.round(nowPerf - googleConnectInitiatedAtRef.current)
+            );
+            if (msg.format?.label) {
+              setGoogleFormatLabel(msg.format.label);
+            }
+            return;
+          }
+
+          if (msg.type === 'speech_event') {
+            if (
+              msg.event.includes('END') ||
+              msg.event === 'SPEECH_ACTIVITY_END'
+            ) {
+              googleSpeechEndedAtRef.current = nowPerf;
+            }
+            return;
+          }
+
+          if (msg.type === 'transcript') {
+            const text = (msg.text ?? '').trim();
+            if (!text) return;
+
+            if (msg.isFinal) {
+              setGooglePartialTranscript('');
+              setGoogleCommittedEventCount((c) => c + 1);
+
+              if (firstChunkSentAtRef.current !== null) {
+                const sinceFirst = Math.round(nowPerf - firstChunkSentAtRef.current);
+                setGoogleTimeToFirstCommittedMs((prev) =>
+                  prev === null ? sinceFirst : prev
+                );
+              }
+
+              const refTime =
+                googleSpeechEndedAtRef.current ?? lastChunkSentAtRef.current;
+              if (refTime !== null) {
+                setGoogleLastCommittedLatencyMs(
+                  Math.max(1, Math.round(nowPerf - refTime))
+                );
+              }
+
+              setGoogleCommittedSegments((prev) => {
+                const last = prev[prev.length - 1];
+                if (last && last.text.trim() === text) {
+                  return prev;
+                }
+                return [
+                  ...prev,
+                  {
+                    id: `go_seg_${Date.now()}_${prev.length}`,
+                    text,
+                    languageCode: msg.languageCode,
+                    words: msg.words,
+                    confidence:
+                      typeof msg.confidence === 'number' && msg.confidence > 0
+                        ? msg.confidence
+                        : undefined,
+                    timestampMs: Math.round(nowPerf - startedAt),
+                  },
+                ];
+              });
+            } else {
+              setGooglePartialTranscript(text);
+              setGooglePartialEventCount((c) => c + 1);
+              if (firstChunkSentAtRef.current !== null) {
+                const sinceFirst = Math.round(nowPerf - firstChunkSentAtRef.current);
+                setGoogleTimeToFirstPartialMs((prev) =>
+                  prev === null ? sinceFirst : prev
+                );
+              }
+            }
+            return;
+          }
+
+          if (msg.type === 'error') {
+            setErrors((prev) => [...prev, `[Google STT v2] ${msg.error}`]);
+            setGoogleStatus('error');
+          }
+        } catch (parseErr) {
+          console.error('Failed to parse Google STT v2 message:', parseErr);
+        }
+      };
+
+      goSocket.onerror = () => {
+        setErrors((prev) => [
+          ...prev,
+          '[Google STT v2] Error de WebSocket al conectar con /api/ws/google.',
+        ]);
+        setGoogleStatus('error');
+      };
+
+      goSocket.onclose = () => {
+        if (!isStoppingRef.current) {
+          setGoogleStatus((prev) => (prev === 'error' ? 'error' : 'disconnected'));
+        }
+      };
+    } else {
+      googleWsRef.current = null;
+      setGoogleStatus('disconnected');
+    }
+
+    // 4. Real-time Microphone Capture -> DSP Profile Processor -> Simultaneous dispatch to ElevenLabs, Gladia & Google STT v2
     const micSource = audioCtx.createMediaStreamSource(stream);
     const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
     scriptNodeRef.current = scriptNode;
@@ -1581,7 +2082,7 @@ export const App: React.FC = () => {
       }
 
       const inputData = audioEvent.inputBuffer.getChannelData(0);
-      const copy = new Float32Array(inputData);
+      const copy = micAgc.processChunk(new Float32Array(inputData));
 
       const processed = processor.processChunk(copy);
       processedPcm16ChunksRef.current.push(processed.previewPcm16);
@@ -1610,43 +2111,65 @@ export const App: React.FC = () => {
         (d) => d + copy.length / processor.inputSampleRate
       );
 
-      // A) Send processed chunk to ElevenLabs Scribe v2 Realtime
-      const chunkMsg: InputAudioChunkMessage = {
-        message_type: 'input_audio_chunk',
-        audio_base_64: processed.wireBase64,
-        commit: false,
-        sample_rate: processed.outputSampleRate,
-      };
-      const serializedElMsg = JSON.stringify(chunkMsg);
+      // A) Send processed chunk to ElevenLabs Scribe v2 Realtime (if active)
+      if (isElActive && ws) {
+        const chunkMsg: InputAudioChunkMessage = {
+          message_type: 'input_audio_chunk',
+          audio_base_64: processed.wireBase64,
+          commit: false,
+          sample_rate: processed.outputSampleRate,
+        };
+        const serializedElMsg = JSON.stringify(chunkMsg);
 
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(serializedElMsg);
-      } else if (
-        ws.readyState === WebSocket.CONNECTING &&
-        elPendingChunksRef.current.length < 30
-      ) {
-        elPendingChunksRef.current.push(serializedElMsg);
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(serializedElMsg);
+        } else if (
+          ws.readyState === WebSocket.CONNECTING &&
+          elPendingChunksRef.current.length < 30
+        ) {
+          elPendingChunksRef.current.push(serializedElMsg);
+        }
       }
 
-      // B) Send the exact same processed audio to Gladia Live v2 (solaria-1)
-      let gladiaBytes: Uint8Array;
-      if (activeProfile === 'ulaw_8000' && processed.muLawBytes) {
-        gladiaBytes = processed.muLawBytes;
-      } else if (gladiaResampler) {
-        const resampledForGladia = gladiaResampler.processChunk(copy);
-        gladiaBytes = pcm16ToLittleEndianBytes(float32ToPcm16(resampledForGladia));
-      } else {
-        gladiaBytes = processed.wireBytes;
+      // B) Send processed audio to Gladia Live v2 (solaria-1) (if active)
+      if (isGlActive) {
+        let gladiaBytes: Uint8Array;
+        if (activeProfile === 'ulaw_8000' && processed.muLawBytes) {
+          gladiaBytes = processed.muLawBytes;
+        } else if (gladiaResampler) {
+          const resampledForGladia = gladiaResampler.processChunk(copy);
+          gladiaBytes = pcm16ToLittleEndianBytes(float32ToPcm16(resampledForGladia));
+        } else {
+          gladiaBytes = processed.wireBytes;
+        }
+
+        const gladiaBuffer = new Uint8Array(gladiaBytes.byteLength);
+        gladiaBuffer.set(gladiaBytes);
+
+        const gSocket = gladiaWsRef.current;
+        if (gSocket && gSocket.readyState === WebSocket.OPEN) {
+          gSocket.send(gladiaBuffer.buffer);
+        } else if (gladiaPendingBinaryRef.current.length < 200) {
+          gladiaPendingBinaryRef.current.push(gladiaBuffer.buffer);
+        }
       }
 
-      const gladiaBuffer = new Uint8Array(gladiaBytes.byteLength);
-      gladiaBuffer.set(gladiaBytes);
+      // C) Send processed audio to Google Cloud Speech-to-Text v2 (chirp_3) (if active)
+      if (isGoActive) {
+        const googleBytes =
+          activeProfile === 'ulaw_8000' && processed.muLawBytes
+            ? processed.muLawBytes
+            : processed.wireBytes;
 
-      const gSocket = gladiaWsRef.current;
-      if (gSocket && gSocket.readyState === WebSocket.OPEN) {
-        gSocket.send(gladiaBuffer.buffer);
-      } else if (gladiaPendingBinaryRef.current.length < 35) {
-        gladiaPendingBinaryRef.current.push(gladiaBuffer.buffer);
+        const googleBuffer = new Uint8Array(googleBytes.byteLength);
+        googleBuffer.set(googleBytes);
+
+        const goSocket = googleWsRef.current;
+        if (goSocket && goSocket.readyState === WebSocket.OPEN) {
+          goSocket.send(googleBuffer.buffer);
+        } else if (googlePendingBinaryRef.current.length < 200) {
+          googlePendingBinaryRef.current.push(googleBuffer.buffer);
+        }
       }
     };
 
@@ -1658,6 +2181,7 @@ export const App: React.FC = () => {
     outputSampleRate > 0 ? (inputSampleRate / outputSampleRate).toFixed(2) : '1.00';
 
   const isGladiaReady = Boolean(health?.gladiaApiKeyConfigured);
+  const isGoogleReady = Boolean(health?.googleConfigured);
 
   // Convert RMS dBFS (-60..0) into a 0..100% visual voice activity bar
   const listeningLevelPct = isStreaming
@@ -1675,7 +2199,7 @@ export const App: React.FC = () => {
           <div>
             <h1>Telephony STT Lab</h1>
             <p className="brand-subtitle">
-              Comparativa en Tiempo Real: ElevenLabs Scribe v2 vs Gladia Solaria-1
+              Comparativa en Tiempo Real: ElevenLabs Scribe v2 vs Gladia Solaria-1 vs Google Chirp 3
             </p>
           </div>
         </div>
@@ -1710,6 +2234,21 @@ export const App: React.FC = () => {
                 : health?.gladiaApiKeyConfigured
                   ? `OK (${health.maskedGladiaApiKey})`
                   : 'Falta Key (.env)'}
+            </span>
+          </div>
+
+          <div
+            className={`api-status-pill ${isGoogleReady ? 'configured' : 'missing'}`}
+            title="Estado de GOOGLE_CREDENTIALS_JSON / GOOGLE_CLOUD_PROJECT en .env"
+          >
+            <span className="status-dot" />
+            <span>
+              Google STT v2:{' '}
+              {healthLoading
+                ? '...'
+                : health?.googleConfigured
+                  ? `OK (${health.googleLocation ?? 'eu'} / ${health.googleModelId ?? 'chirp_3'})`
+                  : 'Falta Creds (.env)'}
             </span>
             <button
               className="btn-inline-refresh"
@@ -1770,6 +2309,18 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Multi-Engine STT Selector Bar */}
+      <EngineSelectorBar
+        availableEngines={registeredEngines}
+        selectedEngineIds={selectedEngineIds}
+        onToggleEngine={handleToggleEngine}
+        serverStatuses={{
+          elevenlabs: Boolean(health?.apiKeyConfigured),
+          gladia: Boolean(health?.gladiaApiKeyConfigured),
+          google: Boolean(health?.googleConfigured),
+        }}
+      />
 
       {/* Lightweight Horizontal Configuration Bar (Left-to-Right, Single Line) */}
       <section className="config-horizontal-bar" aria-label="Opciones de configuración">
@@ -1833,7 +2384,7 @@ export const App: React.FC = () => {
         </div>
       </section>
 
-      {/* Main Two-Column Workbench: Left = Mic & Capture, Right = Dual Results */}
+      {/* Main Two-Column Workbench: Left = Mic & Capture, Right = Multi-Engine Results */}
       <main className="workbench-grid">
         {/* LEFT COLUMN: Microphone Recording & Simple Listening Indicator */}
         <section className="panel-column">
@@ -1845,7 +2396,9 @@ export const App: React.FC = () => {
                     className="btn btn-start"
                     onClick={() => void handleStartStream()}
                   >
-                    <Mic size={18} /> Iniciar Grabación Dual (
+                    <Mic size={18} /> Iniciar Grabación (
+                    {selectedEngineIds.length}{' '}
+                    {selectedEngineIds.length === 1 ? 'Motor' : 'Motores'} -{' '}
                     {AUDIO_PROFILES[activeProfile].shortLabel})
                   </button>
                 ) : (
@@ -1921,6 +2474,12 @@ export const App: React.FC = () => {
                 </code>
               </span>
               <span>
+                Google:{' '}
+                <code>
+                  {resolveGoogleAudioFormat(activeProfile, outputSampleRate).label}
+                </code>
+              </span>
+              <span>
                 Filtro:{' '}
                 <code>
                   {activeProfile === 'original' ? 'Sin filtro' : '300–3400 Hz'}
@@ -1975,11 +2534,11 @@ export const App: React.FC = () => {
           )}
         </section>
 
-        {/* RIGHT COLUMN: Comparativa Simultánea ElevenLabs vs Gladia */}
+        {/* RIGHT COLUMN: Comparativa Simultánea ElevenLabs vs Gladia vs Google STT v2 */}
         <section className="panel-column">
           <div className="lab-card transcript-card">
             <div className="card-header">
-              <h2>Comparativa en Vivo: ElevenLabs vs Gladia</h2>
+              <h2>Comparativa en Vivo: ElevenLabs vs Gladia vs Google Chirp 3</h2>
               <span className={`profile-pill profile-${activeProfile}`}>
                 {AUDIO_PROFILES[activeProfile].shortLabel}
               </span>
@@ -1988,172 +2547,314 @@ export const App: React.FC = () => {
             {/* Side-by-Side Provider Cards */}
             <div className="dual-providers-grid">
               {/* Provider 1: ElevenLabs Scribe v2 Realtime */}
-              <div
-                className={`provider-compare-card ${
-                  liveWinner === 'elevenlabs' ? 'winner-glow' : ''
-                }`}
-              >
-                <div className="provider-card-header">
-                  <div className="provider-title-row">
-                    <span className="provider-badge badge-elevenlabs">
-                      ElevenLabs
-                    </span>
-                    <code className="provider-model-code">scribe_v2_realtime</code>
-                  </div>
-                  <span
-                    className={`provider-mini-status status-${connectionStatus}`}
-                  >
-                    {connectionStatus === 'session_active'
-                      ? 'ACTIVO'
-                      : connectionStatus.toUpperCase()}
-                  </span>
-                </div>
-
-                <div className="provider-meta-strip">
-                  <span>
-                    Formato:{' '}
-                    <code>
-                      {activeProfile === 'original'
-                        ? `pcm_${outputSampleRate}`
-                        : activeProfile}
-                    </code>
-                  </span>
-                  <span>
-                    1er parcial:{' '}
-                    <code>
-                      {timeToFirstPartialMs !== null
-                        ? `${timeToFirstPartialMs}ms`
-                        : '—'}
-                    </code>
-                  </span>
-                  <span>
-                    Commit:{' '}
-                    <code>
-                      {lastCommittedLatencyMs !== null
-                        ? `${lastCommittedLatencyMs}ms`
-                        : '—'}
-                    </code>
-                  </span>
-                </div>
-
-                <div className="transcript-viewport provider-transcript-box">
-                  {!fullTranscript ? (
-                    <p className="transcript-placeholder">
-                      {isStreaming
-                        ? 'Escuchando en ElevenLabs Scribe v2...'
-                        : 'Esperando grabación...'}
-                    </p>
-                  ) : (
-                    <div className="transcript-flow">
-                      <span className="committed-segment">{fullTranscript}</span>
+              {selectedEngineIds.includes('elevenlabs') && (
+                <div
+                  className={`provider-compare-card ${
+                    liveWinner === 'elevenlabs' ? 'winner-glow' : ''
+                  }`}
+                >
+                  <div className="provider-card-header">
+                    <div className="provider-title-row">
+                      <span className="provider-badge badge-elevenlabs">
+                        ElevenLabs
+                      </span>
+                      <code className="provider-model-code">scribe_v2_realtime</code>
                     </div>
-                  )}
-                </div>
-
-                <div className="provider-wer-footer">
-                  <div>
-                    <span className="tel-label">WER ElevenLabs: </span>
-                    <strong
-                      className={formatWerBadgeClass(liveElevenLabsAccuracy?.wer)}
-                      style={{ fontSize: '1.05rem' }}
+                    <span
+                      className={`provider-mini-status status-${connectionStatus}`}
                     >
-                      {liveElevenLabsAccuracy !== null
-                        ? `${(liveElevenLabsAccuracy.wer * 100).toFixed(1)}%`
-                        : '—'}
-                    </strong>
-                  </div>
-                  {liveElevenLabsAccuracy && (
-                    <span className="provider-diff-counts">
-                      S:{liveElevenLabsAccuracy.substitutions} • D:
-                      {liveElevenLabsAccuracy.deletions} • I:
-                      {liveElevenLabsAccuracy.insertions}
+                      {connectionStatus === 'session_active'
+                        ? 'ACTIVO'
+                        : connectionStatus.toUpperCase()}
                     </span>
-                  )}
+                  </div>
+
+                  <div className="provider-meta-strip">
+                    <span>
+                      Formato:{' '}
+                      <code>
+                        {activeProfile === 'original'
+                          ? `pcm_${outputSampleRate}`
+                          : activeProfile}
+                      </code>
+                    </span>
+                    <span>
+                      1er parcial:{' '}
+                      <code>
+                        {timeToFirstPartialMs !== null
+                          ? `${timeToFirstPartialMs}ms`
+                          : '—'}
+                      </code>
+                    </span>
+                    <span>
+                      Commit:{' '}
+                      <code>
+                        {lastCommittedLatencyMs !== null
+                          ? `${lastCommittedLatencyMs}ms`
+                          : '—'}
+                      </code>
+                    </span>
+                  </div>
+
+                  <div className="transcript-viewport provider-transcript-box">
+                    {!fullTranscript ? (
+                      <p className="transcript-placeholder">
+                        {isStreaming
+                          ? 'Escuchando en ElevenLabs Scribe v2...'
+                          : 'Esperando grabación...'}
+                      </p>
+                    ) : (
+                      <div className="transcript-flow">
+                        <span className="committed-segment">{fullTranscript}</span>
+                        {normalizeAlphanumeric &&
+                          liveElevenLabsAccuracy?.normalizedHypothesis && (
+                            <div
+                              style={{
+                                marginTop: '0.45rem',
+                                paddingTop: '0.35rem',
+                                borderTop: '1px dashed rgba(148, 163, 184, 0.25)',
+                                fontSize: '0.78rem',
+                                color: '#94a3b8',
+                              }}
+                              title="Secuencia normalizada usada para calcular el WER (sin puntuación, letras y números unificados)"
+                            >
+                              <strong style={{ color: '#cbd5e1' }}>Norm:</strong>{' '}
+                              <code>{liveElevenLabsAccuracy.normalizedHypothesis}</code>
+                            </div>
+                          )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="provider-wer-footer">
+                    <div>
+                      <span className="tel-label">WER ElevenLabs: </span>
+                      <strong
+                        className={formatWerBadgeClass(liveElevenLabsAccuracy?.wer)}
+                        style={{ fontSize: '1.05rem' }}
+                      >
+                        {liveElevenLabsAccuracy !== null
+                          ? `${(liveElevenLabsAccuracy.wer * 100).toFixed(1)}%`
+                          : '—'}
+                      </strong>
+                    </div>
+                    {liveElevenLabsAccuracy && (
+                      <span className="provider-diff-counts">
+                        S:{liveElevenLabsAccuracy.substitutions} • D:
+                        {liveElevenLabsAccuracy.deletions} • I:
+                        {liveElevenLabsAccuracy.insertions}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Provider 2: Gladia Live v2 (Solaria-1) */}
-              <div
-                className={`provider-compare-card ${
-                  liveWinner === 'gladia' ? 'winner-glow' : ''
-                }`}
-              >
-                <div className="provider-card-header">
-                  <div className="provider-title-row">
-                    <span className="provider-badge badge-gladia">Gladia</span>
-                    <code className="provider-model-code">solaria-1</code>
-                  </div>
-                  <span className={`provider-mini-status status-${gladiaStatus}`}>
-                    {gladiaStatus === 'session_active'
-                      ? 'ACTIVO'
-                      : gladiaStatus.toUpperCase()}
-                  </span>
-                </div>
-
-                <div className="provider-meta-strip">
-                  <span>
-                    Formato: <code>{gladiaFormatLabel.split(' ')[0]}</code>
-                  </span>
-                  <span>
-                    1er parcial:{' '}
-                    <code>
-                      {gladiaTimeToFirstPartialMs !== null
-                        ? `${gladiaTimeToFirstPartialMs}ms`
-                        : '—'}
-                    </code>
-                  </span>
-                  <span>
-                    Confianza:{' '}
-                    <code>
-                      {gladiaAvgConfidence !== null
-                        ? `${Math.round(gladiaAvgConfidence * 100)}%`
-                        : '—'}
-                    </code>
-                  </span>
-                </div>
-
-                <div className="transcript-viewport provider-transcript-box">
-                  {!gladiaFullTranscript ? (
-                    <p className="transcript-placeholder">
-                      {!isGladiaReady
-                        ? 'Configura GLADIA_API_KEY en .env o en la barra superior.'
-                        : isStreaming
-                          ? 'Escuchando en Gladia Solaria-1...'
-                          : 'Esperando grabación...'}
-                    </p>
-                  ) : (
-                    <div className="transcript-flow">
-                      <span className="committed-segment">
-                        {gladiaFullTranscript}
-                      </span>
+              {selectedEngineIds.includes('gladia') && (
+                <div
+                  className={`provider-compare-card ${
+                    liveWinner === 'gladia' ? 'winner-glow' : ''
+                  }`}
+                >
+                  <div className="provider-card-header">
+                    <div className="provider-title-row">
+                      <span className="provider-badge badge-gladia">Gladia</span>
+                      <code className="provider-model-code">solaria-1</code>
                     </div>
-                  )}
-                </div>
-
-                <div className="provider-wer-footer">
-                  <div>
-                    <span className="tel-label">WER Gladia: </span>
-                    <strong
-                      className={formatWerBadgeClass(liveGladiaAccuracy?.wer)}
-                      style={{ fontSize: '1.05rem' }}
-                    >
-                      {liveGladiaAccuracy !== null
-                        ? `${(liveGladiaAccuracy.wer * 100).toFixed(1)}%`
-                        : '—'}
-                    </strong>
-                  </div>
-                  {liveGladiaAccuracy && (
-                    <span className="provider-diff-counts">
-                      S:{liveGladiaAccuracy.substitutions} • D:
-                      {liveGladiaAccuracy.deletions} • I:
-                      {liveGladiaAccuracy.insertions}
+                    <span className={`provider-mini-status status-${gladiaStatus}`}>
+                      {gladiaStatus === 'session_active'
+                        ? 'ACTIVO'
+                        : gladiaStatus.toUpperCase()}
                     </span>
-                  )}
+                  </div>
+
+                  <div className="provider-meta-strip">
+                    <span>
+                      Formato: <code>{gladiaFormatLabel.split(' ')[0]}</code>
+                    </span>
+                    <span>
+                      1er parcial:{' '}
+                      <code>
+                        {gladiaTimeToFirstPartialMs !== null
+                          ? `${gladiaTimeToFirstPartialMs}ms`
+                          : '—'}
+                      </code>
+                    </span>
+                    <span>
+                      Confianza:{' '}
+                      <code>
+                        {gladiaAvgConfidence !== null
+                          ? `${Math.round(gladiaAvgConfidence * 100)}%`
+                          : '—'}
+                      </code>
+                    </span>
+                  </div>
+
+                  <div className="transcript-viewport provider-transcript-box">
+                    {!gladiaFullTranscript ? (
+                      <p className="transcript-placeholder">
+                        {!isGladiaReady
+                          ? 'Configura GLADIA_API_KEY en .env o en la barra superior.'
+                          : isStreaming
+                            ? 'Escuchando en Gladia Solaria-1...'
+                            : 'Esperando grabación...'}
+                      </p>
+                    ) : (
+                      <div className="transcript-flow">
+                        <span className="committed-segment">
+                          {gladiaFullTranscript}
+                        </span>
+                        {normalizeAlphanumeric &&
+                          liveGladiaAccuracy?.normalizedHypothesis && (
+                            <div
+                              style={{
+                                marginTop: '0.45rem',
+                                paddingTop: '0.35rem',
+                                borderTop: '1px dashed rgba(148, 163, 184, 0.25)',
+                                fontSize: '0.78rem',
+                                color: '#94a3b8',
+                              }}
+                              title="Secuencia normalizada usada para calcular el WER (sin puntuación, letras y números unificados)"
+                            >
+                              <strong style={{ color: '#cbd5e1' }}>Norm:</strong>{' '}
+                              <code>{liveGladiaAccuracy.normalizedHypothesis}</code>
+                            </div>
+                          )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="provider-wer-footer">
+                    <div>
+                      <span className="tel-label">WER Gladia: </span>
+                      <strong
+                        className={formatWerBadgeClass(liveGladiaAccuracy?.wer)}
+                        style={{ fontSize: '1.05rem' }}
+                      >
+                        {liveGladiaAccuracy !== null
+                          ? `${(liveGladiaAccuracy.wer * 100).toFixed(1)}%`
+                          : '—'}
+                      </strong>
+                    </div>
+                    {liveGladiaAccuracy && (
+                      <span className="provider-diff-counts">
+                        S:{liveGladiaAccuracy.substitutions} • D:
+                        {liveGladiaAccuracy.deletions} • I:
+                        {liveGladiaAccuracy.insertions}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Provider 3: Google Cloud Speech-to-Text v2 (Chirp 3) */}
+              {selectedEngineIds.includes('google') && (
+                <div
+                  className={`provider-compare-card ${
+                    liveWinner === 'google' ? 'winner-glow' : ''
+                  }`}
+                >
+                  <div className="provider-card-header">
+                    <div className="provider-title-row">
+                      <span className="provider-badge badge-google">Google STT v2</span>
+                      <code className="provider-model-code">
+                        {health?.googleModelId ?? 'chirp_3'}
+                      </code>
+                    </div>
+                    <span className={`provider-mini-status status-${googleStatus}`}>
+                      {googleStatus === 'session_active'
+                        ? 'ACTIVO'
+                        : googleStatus.toUpperCase()}
+                    </span>
+                  </div>
+
+                  <div className="provider-meta-strip">
+                    <span>
+                      Formato: <code>{googleFormatLabel}</code>
+                    </span>
+                    <span>
+                      1er parcial:{' '}
+                      <code>
+                        {googleTimeToFirstPartialMs !== null
+                          ? `${googleTimeToFirstPartialMs}ms`
+                          : '—'}
+                      </code>
+                    </span>
+                    <span>
+                      Confianza:{' '}
+                      <code>
+                        {googleAvgConfidence !== null
+                          ? `${Math.round(googleAvgConfidence * 100)}%`
+                          : '—'}
+                      </code>
+                    </span>
+                  </div>
+
+                  <div className="transcript-viewport provider-transcript-box">
+                    {!googleFullTranscript ? (
+                      <p className="transcript-placeholder">
+                        {!isGoogleReady
+                          ? 'Configura GOOGLE_CREDENTIALS_JSON en .env para activar Chirp 3.'
+                          : isStreaming
+                            ? 'Escuchando en Google STT v2 (Chirp 3)...'
+                            : 'Esperando grabación...'}
+                      </p>
+                    ) : (
+                      <div className="transcript-flow">
+                        <span className="committed-segment">
+                          {googleFullTranscript}
+                        </span>
+                        {normalizeAlphanumeric &&
+                          liveGoogleAccuracy?.normalizedHypothesis && (
+                            <div
+                              style={{
+                                marginTop: '0.45rem',
+                                paddingTop: '0.35rem',
+                                borderTop: '1px dashed rgba(148, 163, 184, 0.25)',
+                                fontSize: '0.78rem',
+                                color: '#94a3b8',
+                              }}
+                              title="Secuencia normalizada usada para calcular el WER (sin puntuación, letras y números unificados)"
+                            >
+                              <strong style={{ color: '#cbd5e1' }}>Norm:</strong>{' '}
+                              <code>{liveGoogleAccuracy.normalizedHypothesis}</code>
+                            </div>
+                          )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="provider-wer-footer">
+                    <div>
+                      <span className="tel-label">WER Google: </span>
+                      <strong
+                        className={formatWerBadgeClass(liveGoogleAccuracy?.wer)}
+                        style={{ fontSize: '1.05rem' }}
+                      >
+                        {liveGoogleAccuracy !== null
+                          ? `${(liveGoogleAccuracy.wer * 100).toFixed(1)}%`
+                          : '—'}
+                      </strong>
+                    </div>
+                    {liveGoogleAccuracy && (
+                      <span className="provider-diff-counts">
+                        S:{liveGoogleAccuracy.substitutions} • D:
+                        {liveGoogleAccuracy.deletions} • I:
+                        {liveGoogleAccuracy.insertions}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {selectedEngineIds.length === 0 && (
+                <div className="empty-engines-alert" style={{ gridColumn: '1 / -1', padding: '2rem', textAlign: 'center' }}>
+                  <p className="text-muted">No hay motores STT seleccionados. Activa al menos un motor en la barra superior.</p>
+                </div>
+              )}
             </div>
 
-            {/* 2. Texto Real (Ground Truth) compartido para evaluar ambos motores */}
+            {/* 2. Texto Real (Ground Truth) compartido para evaluar todos los motores */}
             <div className="form-row">
               <div
                 style={{
@@ -2165,9 +2866,35 @@ export const App: React.FC = () => {
                 }}
               >
                 <label htmlFor="real-transcript-textarea">
-                  Texto Real de Referencia (Ground Truth para calcular el WER de ambos)
+                  Texto Real de Referencia (Ground Truth para calcular el WER de todos los motores)
                 </label>
-                <div style={{ display: 'flex', gap: '0.35rem' }}>
+                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className={`btn btn-xs ${
+                      normalizeAlphanumeric ? 'btn-primary' : 'btn-secondary'
+                    }`}
+                    onClick={() => setNormalizeAlphanumeric((prev) => !prev)}
+                    title="Equipara números escritos ('uno dos') con dígitos ('1 2' o '12') y nombres de letras ('be', 'uve', 'equis') con letras ('b', 'v', 'x'), ignorando signos de puntuación en el cálculo del WER"
+                  >
+                    <Sliders size={11} /> Normalizar WER (1=uno, B=be):{' '}
+                    <strong>{normalizeAlphanumeric ? 'ON' : 'OFF'}</strong>
+                  </button>
+                  {realTranscript.trim() && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-xs"
+                      onClick={() => {
+                        setIsRealTranscriptEdited(true);
+                        setRealTranscript(
+                          normalizeSpanishAlphanumericText(realTranscript)
+                        );
+                      }}
+                      title="Convertir directamente el Texto Real a su forma alfanumérica normalizada (ej: 'uno, dos, be' -> '1 2 b')"
+                    >
+                      <RefreshCw size={11} /> Normalizar Texto
+                    </button>
+                  )}
                   {fullTranscript && (
                     <button
                       type="button"
@@ -2194,19 +2921,46 @@ export const App: React.FC = () => {
                       <RotateCcw size={11} /> Base Gladia
                     </button>
                   )}
+                  {googleFullTranscript && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-xs"
+                      onClick={() => {
+                        setRealTranscript(googleFullTranscript);
+                        setIsRealTranscriptEdited(true);
+                      }}
+                      title="Usar transcripción de Google STT v2 como base"
+                    >
+                      <RotateCcw size={11} /> Base Google
+                    </button>
+                  )}
                 </div>
               </div>
               <textarea
                 id="real-transcript-textarea"
                 className="form-textarea"
                 rows={3}
-                placeholder="Escribe o corrige aquí lo que realmente dijiste para comparar el WER de ElevenLabs vs Gladia..."
+                placeholder="Escribe o corrige aquí lo que realmente dijiste para comparar el WER de ElevenLabs, Gladia y Google Chirp 3..."
                 value={realTranscript}
                 onChange={(e) => {
                   setIsRealTranscriptEdited(true);
                   setRealTranscript(e.target.value);
                 }}
               />
+              {normalizeAlphanumeric && realTranscript.trim() && (
+                <div
+                  style={{
+                    marginTop: '0.35rem',
+                    fontSize: '0.78rem',
+                    color: '#94a3b8',
+                  }}
+                >
+                  <strong style={{ color: '#cbd5e1' }}>
+                    Referencia normalizada para WER:
+                  </strong>{' '}
+                  <code>{normalizeSpanishAlphanumericText(realTranscript)}</code>
+                </div>
+              )}
             </div>
 
             {/* 3. Veredicto en vivo + Botón de Guardar Resultado */}
@@ -2219,11 +2973,7 @@ export const App: React.FC = () => {
                     Mejor ElevenLabs (
                     {liveElevenLabsAccuracy
                       ? `${(liveElevenLabsAccuracy.wer * 100).toFixed(1)}%`
-                      : '0%'}{' '}
-                    vs{' '}
-                    {liveGladiaAccuracy
-                      ? `${(liveGladiaAccuracy.wer * 100).toFixed(1)}%`
-                      : '—'}
+                      : '0%'}
                     )
                   </span>
                 )}
@@ -2232,26 +2982,27 @@ export const App: React.FC = () => {
                     Mejor Gladia (
                     {liveGladiaAccuracy
                       ? `${(liveGladiaAccuracy.wer * 100).toFixed(1)}%`
-                      : '0%'}{' '}
-                    vs{' '}
-                    {liveElevenLabsAccuracy
-                      ? `${(liveElevenLabsAccuracy.wer * 100).toFixed(1)}%`
-                      : '—'}
+                      : '0%'}
+                    )
+                  </span>
+                )}
+                {liveWinner === 'google' && (
+                  <span className="winner-pill winner-google">
+                    Mejor Google Chirp 3 (
+                    {liveGoogleAccuracy
+                      ? `${(liveGoogleAccuracy.wer * 100).toFixed(1)}%`
+                      : '0%'}
                     )
                   </span>
                 )}
                 {liveWinner === 'tie' && (
                   <span className="winner-pill winner-tie">
-                    Empate Técnico (
-                    {liveElevenLabsAccuracy
-                      ? `${(liveElevenLabsAccuracy.wer * 100).toFixed(1)}%`
-                      : '0.0%'}
-                    )
+                    Empate Técnico
                   </span>
                 )}
                 {!liveWinner && (
                   <span className="text-muted" style={{ fontSize: '0.8rem' }}>
-                    Graba un audio para comparar ambos proveedores
+                    Graba un audio para comparar los motores activos
                   </span>
                 )}
               </div>
@@ -2263,6 +3014,7 @@ export const App: React.FC = () => {
                 disabled={
                   (!fullTranscript &&
                     !gladiaFullTranscript &&
+                    !googleFullTranscript &&
                     !latestProcessedWavBytes) ||
                   isStreaming ||
                   isSavingTest ||
@@ -2271,7 +3023,7 @@ export const App: React.FC = () => {
                 title={
                   isAlreadySaved
                     ? 'Esta prueba ya ha sido guardada. Inicia una nueva grabación para guardar otra.'
-                    : 'Guardar comparativa ElevenLabs vs Gladia y archivo WAV'
+                    : 'Guardar comparativa de los motores activos y archivo WAV'
                 }
               >
                 {isAlreadySaved ? (
@@ -2299,7 +3051,7 @@ export const App: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <BarChart3 size={20} className="icon-accent" />
             <h2 style={{ margin: 0, fontSize: '1.05rem' }}>
-              Benchmark Comparativo: ElevenLabs Scribe v2 vs Gladia Solaria-1 (
+              Benchmark Comparativo: ElevenLabs vs Gladia vs Google Chirp 3 (
               {savedResults.length})
             </h2>
           </div>
@@ -2336,7 +3088,7 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Resumen de WER Global y por Telephony Profile (ElevenLabs vs Gladia) */}
+        {/* Resumen de WER Global y por Telephony Profile (ElevenLabs vs Gladia vs Google) */}
         <div
           className="accuracy-kpi-row"
           style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '1rem' }}
@@ -2362,13 +3114,22 @@ export const App: React.FC = () => {
                     : '—'}
                 </strong>
               </div>
+              <div>
+                <small className="kpi-provider-tag tag-go">Google:</small>{' '}
+                <strong className="kpi-num-sm">
+                  {werSummary.globalGoAvgWer !== null
+                    ? `${werSummary.globalGoAvgWer.toFixed(1)}%`
+                    : '—'}
+                </strong>
+              </div>
             </div>
             {(werSummary.elWins > 0 ||
               werSummary.glWins > 0 ||
+              werSummary.goWins > 0 ||
               werSummary.ties > 0) && (
               <span className="kpi-sub">
-                Victorias: EL {werSummary.elWins} • GL {werSummary.glWins} • Empates{' '}
-                {werSummary.ties}
+                Victorias: EL {werSummary.elWins} • GL {werSummary.glWins} • GO{' '}
+                {werSummary.goWins} • Empates {werSummary.ties}
               </span>
             )}
           </div>
@@ -2391,6 +3152,12 @@ export const App: React.FC = () => {
                     {p.avgGlWer !== null ? `${p.avgGlWer.toFixed(1)}%` : '—'}
                   </strong>
                 </div>
+                <div>
+                  <small className="kpi-provider-tag tag-go">Google:</small>{' '}
+                  <strong className="kpi-num-sm">
+                    {p.avgGoWer !== null ? `${p.avgGoWer.toFixed(1)}%` : '—'}
+                  </strong>
+                </div>
               </div>
             </div>
           ))}
@@ -2400,7 +3167,7 @@ export const App: React.FC = () => {
         <div className="history-table-container">
           {savedResults.length === 0 ? (
             <p className="empty-history-msg">
-              No hay resultados guardados todavía. Realiza una grabación dual,
+              No hay resultados guardados todavía. Realiza una grabación,
               corrige el <strong>Texto Real</strong> si hubo algún error y pulsa{' '}
               <strong>"Guardar Comparativa"</strong>.
             </p>
@@ -2416,6 +3183,8 @@ export const App: React.FC = () => {
                   <th>WER EL</th>
                   <th>Gladia (Solaria-1)</th>
                   <th>WER GL</th>
+                  <th>Google (Chirp 3)</th>
+                  <th>WER GO</th>
                   <th>Ganador</th>
                   <th></th>
                 </tr>
@@ -2424,15 +3193,36 @@ export const App: React.FC = () => {
                 {savedResults.map((r) => {
                   const elWer = r.accuracy ? r.accuracy.wer : null;
                   const glWer = r.gladia?.accuracy ? r.gladia.accuracy.wer : null;
-                  let rowWinner: 'elevenlabs' | 'gladia' | 'tie' | null = null;
-                  if (elWer !== null && glWer !== null) {
-                    const diff = elWer - glWer;
-                    rowWinner =
-                      Math.abs(diff) < 1e-6
-                        ? 'tie'
-                        : diff < 0
-                          ? 'elevenlabs'
-                          : 'gladia';
+                  const goWer = r.google?.accuracy ? r.google.accuracy.wer : null;
+
+                  const candidates: Array<{
+                    id: 'elevenlabs' | 'gladia' | 'google';
+                    wer: number;
+                  }> = [];
+                  if (elWer !== null && (r.finalTranscript || r.sessionId)) {
+                    candidates.push({ id: 'elevenlabs', wer: elWer });
+                  }
+                  if (
+                    glWer !== null &&
+                    (r.gladia?.finalTranscript || r.gladia?.sessionId)
+                  ) {
+                    candidates.push({ id: 'gladia', wer: glWer });
+                  }
+                  if (
+                    goWer !== null &&
+                    (r.google?.finalTranscript || r.google?.sessionId)
+                  ) {
+                    candidates.push({ id: 'google', wer: goWer });
+                  }
+
+                  let rowWinner: 'elevenlabs' | 'gladia' | 'google' | 'tie' | null =
+                    null;
+                  if (candidates.length >= 2) {
+                    const minWer = Math.min(...candidates.map((c) => c.wer));
+                    const best = candidates.filter(
+                      (c) => Math.abs(c.wer - minWer) < 1e-6
+                    );
+                    rowWinner = best.length > 1 ? 'tie' : best[0]!.id;
                   }
 
                   return (
@@ -2489,6 +3279,25 @@ export const App: React.FC = () => {
                           '—'
                         )}
                       </td>
+                      <td
+                        className="td-transcript"
+                        title={r.google?.finalTranscript ?? ''}
+                      >
+                        {r.google?.finalTranscript ? (
+                          r.google.finalTranscript
+                        ) : (
+                          <em className="text-muted">(sin datos Google)</em>
+                        )}
+                      </td>
+                      <td>
+                        {goWer !== null ? (
+                          <strong className={formatWerBadgeClass(goWer)}>
+                            {(goWer * 100).toFixed(1)}%
+                          </strong>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td>
                         {rowWinner === 'elevenlabs' && (
                           <span className="winner-pill winner-elevenlabs">
@@ -2497,6 +3306,9 @@ export const App: React.FC = () => {
                         )}
                         {rowWinner === 'gladia' && (
                           <span className="winner-pill winner-gladia">Gladia</span>
+                        )}
+                        {rowWinner === 'google' && (
+                          <span className="winner-pill winner-google">Google</span>
                         )}
                         {rowWinner === 'tie' && (
                           <span className="winner-pill winner-tie">Empate</span>
@@ -2528,6 +3340,8 @@ export const App: React.FC = () => {
         maskedApiKey={health?.maskedApiKey ?? null}
         gladiaApiKeyConfigured={isGladiaReady}
         maskedGladiaApiKey={health?.maskedGladiaApiKey ?? null}
+        googleConfigured={isGoogleReady}
+        maskedGoogleKey={health?.maskedGoogleKey ?? null}
         upstreamEndpoint={
           health?.upstreamEndpoint ??
           'wss://api.elevenlabs.io/v1/speech-to-text/realtime'

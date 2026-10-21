@@ -76,6 +76,14 @@ export interface GladiaLiveEvent {
     id?: string;
     is_final?: boolean;
     utterance?: GladiaLiveUtterance;
+    utterances?: GladiaLiveUtterance[];
+    full_transcript?: string;
+    languages?: string[];
+    transcription?: {
+      languages?: string[];
+      utterances?: GladiaLiveUtterance[];
+      full_transcript?: string;
+    };
     time?: number;
   };
 }
@@ -158,11 +166,11 @@ export function buildGladiaLiveSessionPayload(
     maximum_duration_without_endpointing: 5,
     language_config: {
       languages,
-      code_switching: false,
+      code_switching: languages.length === 0,
     },
     pre_processing: {
       audio_enhancer: false,
-      speech_threshold: 0.6,
+      speech_threshold: 0.5,
     },
     messages_config: {
       receive_partial_transcripts: true,

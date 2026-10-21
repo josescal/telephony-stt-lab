@@ -97,17 +97,22 @@ export function resultsToCsvString(results: BenchmarkTestResult[]): string {
     'Evaluation Label',
     'ElevenLabs Format',
     'Gladia Format',
+    'Google Format',
     'Input Sample Rate (Hz)',
     'Output Sample Rate (Hz)',
     'Commit Strategy',
     'Language Code',
     'ElevenLabs Session ID',
     'Gladia Session ID',
+    'Google Session ID',
     'ElevenLabs WER (%)',
     'ElevenLabs Word Accuracy (%)',
     'Gladia WER (%)',
     'Gladia Word Accuracy (%)',
     'Gladia Confidence (%)',
+    'Google WER (%)',
+    'Google Word Accuracy (%)',
+    'Google Confidence (%)',
     'Winner',
     'ElevenLabs Substitutions',
     'ElevenLabs Deletions',
@@ -115,12 +120,18 @@ export function resultsToCsvString(results: BenchmarkTestResult[]): string {
     'Gladia Substitutions',
     'Gladia Deletions',
     'Gladia Insertions',
+    'Google Substitutions',
+    'Google Deletions',
+    'Google Insertions',
     'ElevenLabs Handshake Latency (ms)',
     'ElevenLabs First Partial (ms)',
     'ElevenLabs First Committed (ms)',
     'Gladia Handshake Latency (ms)',
     'Gladia First Partial (ms)',
     'Gladia First Committed (ms)',
+    'Google Handshake Latency (ms)',
+    'Google First Partial (ms)',
+    'Google First Committed (ms)',
     'Audio Duration (s)',
     'Total Session Time (ms)',
     'RMS Level (dBFS)',
@@ -129,23 +140,28 @@ export function resultsToCsvString(results: BenchmarkTestResult[]): string {
     'Reference Transcript (Ground Truth)',
     'ElevenLabs Final Transcript',
     'Gladia Final Transcript',
+    'Google Final Transcript',
   ];
 
   const rows = results.map((r) => {
-    const elWer = r.accuracy ? r.accuracy.wer : null;
-    const glWer = r.gladia?.accuracy ? r.gladia.accuracy.wer : null;
+    const candidates: Array<{ name: string; wer: number }> = [];
+    if (r.accuracy && (r.finalTranscript || r.sessionId)) {
+      candidates.push({ name: 'ElevenLabs', wer: r.accuracy.wer });
+    }
+    if (r.gladia?.accuracy && (r.gladia.finalTranscript || r.gladia.sessionId)) {
+      candidates.push({ name: 'Gladia', wer: r.gladia.accuracy.wer });
+    }
+    if (r.google?.accuracy && (r.google.finalTranscript || r.google.sessionId)) {
+      candidates.push({ name: 'Google', wer: r.google.accuracy.wer });
+    }
+
     let winner = '';
-    if (elWer !== null && glWer !== null) {
-      winner =
-        Math.abs(elWer - glWer) < 1e-6
-          ? 'Tie'
-          : elWer < glWer
-            ? 'ElevenLabs'
-            : 'Gladia';
-    } else if (elWer !== null) {
-      winner = 'ElevenLabs';
-    } else if (glWer !== null) {
-      winner = 'Gladia';
+    if (candidates.length === 1) {
+      winner = candidates[0]!.name;
+    } else if (candidates.length > 1) {
+      const minWer = Math.min(...candidates.map((c) => c.wer));
+      const best = candidates.filter((c) => Math.abs(c.wer - minWer) < 1e-6);
+      winner = best.length > 1 ? 'Tie' : best[0]!.name;
     }
 
     return [
@@ -156,18 +172,25 @@ export function resultsToCsvString(results: BenchmarkTestResult[]): string {
       r.evaluationLabel ?? 'unlabeled',
       r.elevenLabsFormat,
       r.gladia?.formatLabel ?? '',
+      r.google?.formatLabel ?? '',
       r.inputSampleRate,
       r.outputSampleRate,
       r.commitStrategy,
       r.languageCode || 'auto',
       r.sessionId ?? '',
       r.gladia?.sessionId ?? '',
+      r.google?.sessionId ?? '',
       r.accuracy ? (r.accuracy.wer * 100).toFixed(2) : '',
       r.accuracy ? (r.accuracy.wordAccuracy * 100).toFixed(2) : '',
       r.gladia?.accuracy ? (r.gladia.accuracy.wer * 100).toFixed(2) : '',
       r.gladia?.accuracy ? (r.gladia.accuracy.wordAccuracy * 100).toFixed(2) : '',
       r.gladia?.confidence !== null && r.gladia?.confidence !== undefined
         ? (r.gladia.confidence * 100).toFixed(1)
+        : '',
+      r.google?.accuracy ? (r.google.accuracy.wer * 100).toFixed(2) : '',
+      r.google?.accuracy ? (r.google.accuracy.wordAccuracy * 100).toFixed(2) : '',
+      r.google?.confidence !== null && r.google?.confidence !== undefined
+        ? (r.google.confidence * 100).toFixed(1)
         : '',
       winner,
       r.accuracy?.substitutions ?? '',
@@ -176,12 +199,18 @@ export function resultsToCsvString(results: BenchmarkTestResult[]): string {
       r.gladia?.accuracy?.substitutions ?? '',
       r.gladia?.accuracy?.deletions ?? '',
       r.gladia?.accuracy?.insertions ?? '',
+      r.google?.accuracy?.substitutions ?? '',
+      r.google?.accuracy?.deletions ?? '',
+      r.google?.accuracy?.insertions ?? '',
       r.latency.handshakeLatencyMs ?? '',
       r.latency.timeToFirstPartialMs ?? '',
       r.latency.timeToFirstCommittedMs ?? '',
       r.gladia?.handshakeLatencyMs ?? '',
       r.gladia?.timeToFirstPartialMs ?? '',
       r.gladia?.timeToFirstCommittedMs ?? '',
+      r.google?.handshakeLatencyMs ?? '',
+      r.google?.timeToFirstPartialMs ?? '',
+      r.google?.timeToFirstCommittedMs ?? '',
       r.latency.audioDurationStreamedSec.toFixed(2),
       r.latency.totalSessionDurationMs,
       r.signalMetrics.rmsDbFs,
@@ -190,6 +219,7 @@ export function resultsToCsvString(results: BenchmarkTestResult[]): string {
       r.referenceTranscript,
       r.finalTranscript,
       r.gladia?.finalTranscript ?? '',
+      r.google?.finalTranscript ?? '',
     ];
   });
 

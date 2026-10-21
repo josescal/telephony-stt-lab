@@ -6,6 +6,7 @@ import express from 'express';
 import cors from 'cors';
 import { parseAndValidateEnv } from './env.js';
 import { attachSttWebSocketProxy } from './wsProxy.js';
+import { attachGoogleSttWebSocketProxy } from './googleWsProxy.js';
 import {
   DATA_DIR,
   ensureDataDirectories,
@@ -35,6 +36,72 @@ export function createAppServer() {
   // Re-read env dynamically on health checks so editing .env works smoothly
   const getEnv = () => parseAndValidateEnv(process.env);
 
+  // Engine discovery and capability endpoint
+  app.get('/api/engines', (_req, res) => {
+    try {
+      const env = getEnv();
+      res.json({
+        engines: [
+          {
+            id: 'elevenlabs',
+            name: 'ElevenLabs Scribe v2',
+            vendor: 'ElevenLabs',
+            defaultModel: 'scribe_v2_realtime',
+            isConfigured: env.isApiKeyConfigured,
+            maskedApiKey: env.maskedApiKey,
+            capabilities: {
+              supportsUlaw8k: true,
+              supportsPcm8k: true,
+              supportsPcm16k: true,
+              supportsWordTimestamps: true,
+              supportsConfidenceScore: true,
+              supportsManualCommit: true,
+              supportsVadAutoCommit: true,
+            },
+          },
+          {
+            id: 'gladia',
+            name: 'Gladia Live v2',
+            vendor: 'Gladia',
+            defaultModel: 'solaria-1',
+            isConfigured: env.isGladiaApiKeyConfigured,
+            maskedApiKey: env.maskedGladiaApiKey,
+            capabilities: {
+              supportsUlaw8k: true,
+              supportsPcm8k: true,
+              supportsPcm16k: true,
+              supportsWordTimestamps: true,
+              supportsConfidenceScore: true,
+              supportsManualCommit: false,
+              supportsVadAutoCommit: true,
+            },
+          },
+          {
+            id: 'google',
+            name: 'Google STT v2 (Chirp 3)',
+            vendor: 'Google Cloud',
+            defaultModel: env.googleModel,
+            isConfigured: env.isGoogleConfigured,
+            maskedApiKey: env.maskedGoogleKey,
+            capabilities: {
+              supportsUlaw8k: true,
+              supportsPcm8k: true,
+              supportsPcm16k: true,
+              supportsWordTimestamps: true,
+              supportsConfidenceScore: true,
+              supportsManualCommit: false,
+              supportsVadAutoCommit: true,
+            },
+          },
+        ],
+      });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Error retrieving engines',
+      });
+    }
+  });
+
   app.get('/api/health', (_req, res) => {
     try {
       const env = getEnv();
@@ -43,10 +110,14 @@ export function createAppServer() {
         service: 'telephony-stt-lab-proxy',
         modelId: 'scribe_v2_realtime',
         gladiaModelId: 'solaria-1',
+        googleModelId: env.googleModel,
+        googleLocation: env.googleLocation,
         apiKeyConfigured: env.isApiKeyConfigured,
         maskedApiKey: env.maskedApiKey,
         gladiaApiKeyConfigured: env.isGladiaApiKeyConfigured,
         maskedGladiaApiKey: env.maskedGladiaApiKey,
+        googleConfigured: env.isGoogleConfigured,
+        maskedGoogleKey: env.maskedGoogleKey,
         upstreamEndpoint: env.elevenLabsWsUrl,
         gladiaLiveUrl: env.gladiaLiveUrl,
         warnings: env.validationWarnings,
@@ -220,6 +291,7 @@ export function createAppServer() {
 
   const httpServer = http.createServer(app);
   attachSttWebSocketProxy(httpServer, getEnv);
+  attachGoogleSttWebSocketProxy(httpServer, getEnv);
 
   return { app, httpServer, getEnv };
 }
@@ -236,7 +308,7 @@ if (isMainModule) {
 
     httpServer.listen(env.port, () => {
       console.log(`\n=============================================================`);
-      console.log(`  Telephony STT Lab — ElevenLabs Scribe v2 vs Gladia Solaria-1`);
+      console.log(`  Telephony STT Lab — ElevenLabs vs Gladia vs Google Chirp 3`);
       console.log(`  HTTP & WebSocket Proxy listening on: http://localhost:${env.port}`);
       console.log(`  Upstream Scribe v2 URL: ${env.elevenLabsWsUrl}`);
       console.log(`  Upstream Gladia V2 URL: ${env.gladiaLiveUrl}`);
@@ -251,7 +323,14 @@ if (isMainModule) {
         `  Gladia API Key:     ${
           env.isGladiaApiKeyConfigured
             ? `Configured (${env.maskedGladiaApiKey})`
-            : 'Not in .env (can be set in .env or top UI config bar)'
+            : 'Not in .env (set GLADIA_API_KEY in .env)'
+        }`
+      );
+      console.log(
+        `  Google STT v2:      ${
+          env.isGoogleConfigured
+            ? `Configured (${env.maskedGoogleKey})`
+            : 'Not in .env (set GOOGLE_CREDENTIALS_JSON in .env)'
         }`
       );
       if (env.validationWarnings.length > 0) {

@@ -1841,10 +1841,10 @@ code, pre {
   border-radius: 6px;
 }
 
-/* Dual Providers Comparison Grid (ElevenLabs vs Gladia) */
+/* Multi-Providers Comparison Grid (ElevenLabs vs Gladia vs Google Chirp 3) */
 .dual-providers-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
   gap: 0.85rem;
 }
 
@@ -1904,6 +1904,12 @@ code, pre {
   background: rgba(6, 182, 212, 0.18);
   color: #67e8f9;
   border: 1px solid rgba(6, 182, 212, 0.4);
+}
+
+.badge-google {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.45);
 }
 
 .provider-model-code {
@@ -1981,17 +1987,24 @@ code, pre {
   border: 1px solid rgba(6, 182, 212, 0.45);
 }
 
+.winner-google {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
 .winner-tie {
   background: rgba(16, 185, 129, 0.16);
   color: #6ee7b7;
   border: 1px solid rgba(16, 185, 129, 0.4);
 }
 
-/* Dual KPI Box Values */
+/* Multi KPI Box Values */
 .kpi-dual-values {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.35rem;
 }
 
@@ -2076,3 +2089,95 @@ code, pre {
   min-width: 62px;
   text-align: right;
 }
+
+/* =========================================================================
+   N-Engines Multi-Engine Workbench Styles
+   ========================================================================= */
+
+.engine-selector-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.55rem 0.9rem;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.engine-selector-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.engine-selector-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.engine-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: #1e293b;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.engine-chip:hover {
+  background: #273549;
+  color: var(--text-primary);
+}
+
+.engine-chip-active {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.6);
+  color: #fff;
+}
+
+.engine-chip-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.engine-chip-active .engine-chip-checkbox {
+  background: var(--accent-indigo);
+  border-color: var(--accent-indigo);
+  color: #fff;
+}
+
+.engine-chip-name {
+  font-weight: 600;
+}
+
+.engine-chip-model {
+  font-size: 0.72rem;
+  opacity: 0.75;
+  font-family: var(--font-mono);
+}
+
+.engine-chip-warn {
+  color: #f59e0b;
+  display: inline-flex;
+  align-items: center;
+}
+
+
